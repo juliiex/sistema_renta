@@ -3,7 +3,8 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Models\Usuario;
+use App\Models\Rol;
 use App\Providers\RouteServiceProvider;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
@@ -16,7 +17,7 @@ use Illuminate\View\View;
 class RegisteredUserController extends Controller
 {
     /**
-     * Display the registration view.
+     * Muestra la vista de registro.
      */
     public function create(): View
     {
@@ -24,27 +25,35 @@ class RegisteredUserController extends Controller
     }
 
     /**
-     * Handle an incoming registration request.
-     *
-     * @throws \Illuminate\Validation\ValidationException
+     * Procesa la solicitud de registro.
      */
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'nombre' => ['required', 'string', 'max:255'],
+            'correo' => ['required', 'string', 'email', 'max:255', 'unique:usuario,correo'],
+            'telefono' => ['required', 'string', 'max:20'],
+            'contraseña' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
+        $usuario = Usuario::create([
+            'nombre' => $request->nombre,
+            'correo' => $request->correo,
+            'telefono' => $request->telefono,
+            'contraseña' => Hash::make($request->contraseña),
         ]);
 
-        event(new Registered($user));
+        // Asignar rol automáticamente
+        $rol = Rol::where('nombre', 'posible inquilino')->first();
+        if ($rol) {
+            $usuario->roles()->attach($rol->id);
+        } else {
+            abort(500, 'El rol "posible inquilino" no está definido en la base de datos.');
+        }
 
-        Auth::login($user);
+        event(new Registered($usuario));
+
+        Auth::login($usuario);
 
         return redirect(RouteServiceProvider::HOME);
     }

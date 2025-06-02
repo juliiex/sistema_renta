@@ -11,12 +11,41 @@ use Illuminate\Support\Facades\Storage;
 class ApartamentoController extends Controller
 {
     /**
+     * Constructor: añade middleware de permisos
+     */
+    public function __construct()
+    {
+        $this->middleware('permission:ver_apartamento')->only(['index', 'show']);
+        $this->middleware('permission:crear_apartamento')->only(['create', 'store']);
+        $this->middleware('permission:editar_apartamento')->only(['edit', 'update']);
+        $this->middleware('permission:eliminar_apartamento')->only(['destroy']);
+    }
+
+    /**
      * Mostrar la lista de apartamentos.
      */
     public function index()
     {
-        $apartamentos = Apartamento::with('edificio')->get();
-        return view('apartamento.index', compact('apartamentos'));
+        // Para el admin/propietario - ver todos
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            $apartamentos = Apartamento::with('edificio')->get();
+        }
+        // Para inquilinos - ver solo los suyos (si están relacionados a algún contrato)
+        else if (auth()->user()->hasRole('inquilino')) {
+            $apartamentos = Apartamento::with('edificio')
+                ->whereHas('contratos', function($query) {
+                    $query->where('usuario_id', auth()->id());
+                })
+                ->get();
+        }
+        // Para posibles inquilinos - ver solo disponibles
+        else {
+            $apartamentos = Apartamento::with('edificio')
+                ->where('estado', 'disponible')
+                ->get();
+        }
+
+        return view('admin.apartamento.index', compact('apartamentos'));
     }
 
     /**
@@ -25,7 +54,7 @@ class ApartamentoController extends Controller
     public function create()
     {
         $edificios = Edificio::all();
-        return view('apartamento.create', compact('edificios'));
+        return view('admin.apartamento.create', compact('edificios'));
     }
 
     /**
@@ -59,7 +88,24 @@ class ApartamentoController extends Controller
     public function show($id)
     {
         $apartamento = Apartamento::with('edificio')->findOrFail($id);
-        return view('apartamento.show', compact('apartamento'));
+
+        // Verificar acceso para inquilinos (solo pueden ver sus apartamentos)
+        if (auth()->user()->hasRole('inquilino')) {
+            $tieneAcceso = false;
+
+            // Verificar si el usuario tiene contratos relacionados con este apartamento
+            if (auth()->user()->contratos) {
+                $tieneAcceso = auth()->user()->contratos()
+                    ->where('apartamento_id', $id)
+                    ->exists();
+            }
+
+            if (!$tieneAcceso) {
+                abort(403, 'No tiene permiso para ver este apartamento');
+            }
+        }
+
+        return view('admin.apartamento.show', compact('apartamento'));
     }
 
     /**
@@ -69,7 +115,7 @@ class ApartamentoController extends Controller
     {
         $apartamento = Apartamento::findOrFail($id);
         $edificios = Edificio::all();
-        return view('apartamento.edit', compact('apartamento', 'edificios'));
+        return view('admin.apartamento.edit', compact('apartamento', 'edificios'));
     }
 
     /**

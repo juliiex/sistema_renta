@@ -3,166 +3,194 @@
 namespace App\Http\Controllers;
 
 use App\Models\Queja;
+use App\Models\Usuario;
+use App\Models\Rol;
 use Illuminate\Http\Request;
 
 class QuejaController extends Controller
 {
     /**
-     * @OA\Get(
-     *     path="/api/queja",
-     *     summary="Obtener todas las quejas",
-     *     tags={"Queja"},
-     *     @OA\Response(
-     *         response=200,
-     *         description="Lista de quejas",
-     *         @OA\JsonContent(type="array", @OA\Items(ref="#/components/schemas/Queja"))
-     *     )
-     * )
+     * Constructor: añade middleware de permisos
      */
+    public function __construct()
+    {
+        $this->middleware('permission:ver_queja')->only(['index', 'show']);
+        $this->middleware('permission:crear_queja')->only(['create', 'store']);
+        $this->middleware('permission:editar_queja')->only(['edit', 'update']);
+        $this->middleware('permission:eliminar_queja')->only(['destroy']);
+    }
+
+    // Mostrar todas las quejas
     public function index()
     {
-        $quejas = Queja::with('usuario')->get();
-        return response()->json($quejas);
+        // Todas las quejas son visibles para todos los usuarios
+        $quejas = Queja::with('usuario')->orderBy('id', 'desc')->get();
+        return view('admin.queja.index', compact('quejas'));
     }
 
-    /**
-     * @OA\Get(
-     *     path="/api/queja/{id}",
-     *     summary="Mostrar una queja específica",
-     *     tags={"Queja"},
-     *     @OA\Parameter(
-     *         name="id",
-     *         in="path",
-     *         required=true,
-     *         description="ID de la queja",
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Response(response=200, description="Detalle de la queja", @OA\JsonContent(ref="#/components/schemas/Queja")),
-     *     @OA\Response(response=404, description="Queja no encontrada")
-     * )
-     */
-    public function show($id)
-    {
-        $queja = Queja::find($id);
-        if ($queja) {
-            return response()->json($queja);
-        }
-        return response()->json(['message' => 'Queja no encontrada'], 404);
-    }
-
-    /**
-     * @OA\Get(
-     *     path="/api/queja/create",
-     *     summary="Formulario de creación de quejas",
-     *     tags={"Queja"},
-     *     @OA\Response(
-     *         response=200,
-     *         description="Formulario de creación"
-     *     )
-     * )
-     */
+    // Mostrar formulario de creación
     public function create()
     {
-        return response()->json(['message' => 'Formulario de creación de quejas']);
+        // Si es admin, puede seleccionar cualquier usuario que sea inquilino
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            // Obtener el ID del rol "inquilino"
+            $rolInquilino = Rol::where('nombre', 'inquilino')->first();
+
+            if ($rolInquilino) {
+                // Obtener usuarios con rol de inquilino
+                $usuarios = Usuario::whereHas('roles', function($query) use ($rolInquilino) {
+                    $query->where('rol_id', $rolInquilino->id);
+                })->orderBy('nombre', 'asc')->get();
+            } else {
+                $usuarios = collect(); // Colección vacía si no se encuentra el rol
+            }
+        } else {
+            // Si no es admin, solo puede crear quejas para sí mismo
+            $usuarios = Usuario::where('id', auth()->id())->get();
+        }
+
+        // Lista de tipos de quejas
+        $tiposQuejas = [
+            'Aplicativo' => 'Aplicativo',
+            'Servicio' => 'Servicio',
+            'Mantenimiento' => 'Mantenimiento',
+            'Seguridad' => 'Seguridad',
+            'Vecinos' => 'Vecinos',
+            'Instalaciones' => 'Instalaciones',
+            'Otro' => 'Otro'
+        ];
+
+        return view('admin.queja.create', compact('usuarios', 'tiposQuejas'));
     }
 
-    /**
-     * @OA\Post(
-     *     path="/api/queja",
-     *     summary="Crear una nueva queja",
-     *     tags={"Queja"},
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             required={"usuario_id", "descripcion", "tipo", "fecha_envio"},
-     *             @OA\Property(property="usuario_id", type="integer", example=1),
-     *             @OA\Property(property="descripcion", type="string", example="Descripción de la queja"),
-     *             @OA\Property(property="tipo", type="string", example="General"),
-     *             @OA\Property(property="fecha_envio", type="string", format="date", example="2025-04-08")
-     *         )
-     *     ),
-     *     @OA\Response(response=201, description="Queja creada"),
-     *     @OA\Response(response=422, description="Error de validación")
-     * )
-     */
+    // Guardar una nueva queja
     public function store(Request $request)
     {
         $request->validate([
             'usuario_id' => 'required|exists:usuario,id',
-            'descripcion' => 'required|string',
-            'tipo' => 'required|string',
+            'descripcion' => 'required|string|max:500',
+            'tipo' => 'required|string|max:50',
             'fecha_envio' => 'required|date',
         ]);
 
-        $queja = Queja::create($request->all());
-        return response()->json($queja, 201);
+        // Si no es admin o propietario, aseguramos que solo cree quejas para sí mismo
+        if (!auth()->user()->hasRole(['admin', 'propietario']) && $request->usuario_id != auth()->id()) {
+            return redirect()->route('queja.create')
+                ->with('error', 'Solo puede crear quejas para su propio usuario.');
+        }
+
+        // Verificar que el usuario seleccionado tenga rol de inquilino (si el creador es admin o propietario)
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            $usuario = Usuario::find($request->usuario_id);
+            if (!$usuario->hasRole('inquilino')) {
+                return redirect()->route('queja.create')
+                    ->with('error', 'Solo se pueden crear quejas para usuarios con rol de inquilino.');
+            }
+        }
+
+        Queja::create($request->all());
+        return redirect()->route('queja.index')->with('success', 'Queja creada correctamente.');
     }
 
-    /**
-     * @OA\Put(
-     *     path="/api/queja/{id}",
-     *     summary="Actualizar una queja",
-     *     tags={"Queja"},
-     *     @OA\Parameter(
-     *         name="id",
-     *         in="path",
-     *         required=true,
-     *         description="ID de la queja a actualizar",
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\RequestBody(
-     *         required=true,
-     *         @OA\JsonContent(
-     *             @OA\Property(property="usuario_id", type="integer", example=1),
-     *             @OA\Property(property="descripcion", type="string", example="Nueva descripción"),
-     *             @OA\Property(property="tipo", type="string", example="Aplicativo"),
-     *             @OA\Property(property="fecha_envio", type="string", format="date", example="2025-04-10")
-     *         )
-     *     ),
-     *     @OA\Response(response=200, description="Queja actualizada"),
-     *     @OA\Response(response=404, description="Queja no encontrada")
-     * )
-     */
+    // Mostrar una queja específica
+    public function show($id)
+    {
+        // Cualquier usuario puede ver cualquier queja
+        $queja = Queja::with('usuario')->findOrFail($id);
+        return view('admin.queja.show', compact('queja'));
+    }
+
+    // Mostrar formulario de edición
+    public function edit($id)
+    {
+        $queja = Queja::findOrFail($id);
+
+        // Solo el creador de la queja o un administrador pueden editar
+        if ($queja->usuario_id != auth()->id() && !auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('queja.index')
+                ->with('error', 'Solo puede editar sus propias quejas.');
+        }
+
+        // Si es admin o propietario, puede cambiar el usuario (solo a inquilinos)
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            // Obtener el ID del rol "inquilino"
+            $rolInquilino = Rol::where('nombre', 'inquilino')->first();
+
+            if ($rolInquilino) {
+                // Obtener usuarios con rol de inquilino
+                $usuarios = Usuario::whereHas('roles', function($query) use ($rolInquilino) {
+                    $query->where('rol_id', $rolInquilino->id);
+                })->orderBy('nombre', 'asc')->get();
+            } else {
+                $usuarios = collect(); // Colección vacía si no se encuentra el rol
+            }
+        } else {
+            // Si no es admin, no puede cambiar el usuario (solo el suyo)
+            $usuarios = Usuario::where('id', auth()->id())->get();
+        }
+
+        // Lista de tipos de quejas
+        $tiposQuejas = [
+            'Aplicativo' => 'Aplicativo',
+            'Servicio' => 'Servicio',
+            'Mantenimiento' => 'Mantenimiento',
+            'Seguridad' => 'Seguridad',
+            'Vecinos' => 'Vecinos',
+            'Instalaciones' => 'Instalaciones',
+            'Otro' => 'Otro'
+        ];
+
+        return view('admin.queja.edit', compact('queja', 'usuarios', 'tiposQuejas'));
+    }
+
+    // Actualizar una queja
     public function update(Request $request, $id)
     {
-        $queja = Queja::find($id);
-        if ($queja) {
-            $request->validate([
-                'usuario_id' => 'required|exists:usuario,id',
-                'descripcion' => 'required|string',
-                'tipo' => 'required|string',
-                'fecha_envio' => 'required|date',
-            ]);
+        $queja = Queja::findOrFail($id);
 
-            $queja->update($request->all());
-            return response()->json($queja);
+        // Solo el creador de la queja o un administrador pueden actualizar
+        if ($queja->usuario_id != auth()->id() && !auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('queja.index')
+                ->with('error', 'Solo puede actualizar sus propias quejas.');
         }
-        return response()->json(['message' => 'Queja no encontrada'], 404);
+
+        $request->validate([
+            'usuario_id' => 'required|exists:usuario,id',
+            'descripcion' => 'required|string|max:500',
+            'tipo' => 'required|string|max:50',
+            'fecha_envio' => 'required|date',
+        ]);
+
+        // Si no es admin o propietario, no permitir cambiar el usuario
+        if (!auth()->user()->hasRole(['admin', 'propietario'])) {
+            $request->merge(['usuario_id' => $queja->usuario_id]);
+        } else {
+            // Verificar que el usuario seleccionado tenga rol de inquilino
+            $usuario = Usuario::find($request->usuario_id);
+            if (!$usuario->hasRole('inquilino')) {
+                return redirect()->route('queja.edit', $queja->id)
+                    ->with('error', 'Solo se pueden asignar quejas a usuarios con rol de inquilino.');
+            }
+        }
+
+        $queja->update($request->all());
+
+        return redirect()->route('queja.index')->with('success', 'Queja actualizada correctamente.');
     }
 
-     /**
-     * @OA\Delete(
-     *     path="/api/queja/{id}",
-     *     summary="Eliminar una queja",
-     *     tags={"Queja"},
-     *     @OA\Parameter(
-     *         name="id",
-     *         in="path",
-     *         required=true,
-     *         description="ID de la queja a eliminar",
-     *         @OA\Schema(type="integer")
-     *     ),
-     *     @OA\Response(response=200, description="Queja eliminada correctamente"),
-     *     @OA\Response(response=404, description="Queja no encontrada")
-     * )
-     */
+    // Eliminar una queja
     public function destroy($id)
     {
-        $queja = Queja::find($id);
-        if ($queja) {
-            $queja->delete();
-            return response()->json(['message' => 'Queja eliminada correctamente']);
+        $queja = Queja::findOrFail($id);
+
+        // Solo el creador de la queja o un administrador pueden eliminar
+        if ($queja->usuario_id != auth()->id() && !auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('queja.index')
+                ->with('error', 'Solo puede eliminar sus propias quejas.');
         }
-        return response()->json(['message' => 'Queja no encontrada'], 404);
+
+        $queja->delete();
+
+        return redirect()->route('queja.index')->with('success', 'Queja eliminada correctamente.');
     }
 }

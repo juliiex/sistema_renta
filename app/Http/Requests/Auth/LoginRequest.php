@@ -6,6 +6,7 @@ use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -41,7 +42,15 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('correo', 'password'), $this->boolean('remember'))) {
+        Log::info("Intentando autenticación con correo: {$this->correo}");
+
+        // Modificamos para ser más explícitos sobre los campos que estamos usando
+        if (!Auth::attempt([
+            'correo' => $this->correo,
+            'password' => $this->password
+        ], $this->boolean('remember'))) {
+            Log::warning("Auth::attempt falló para correo: {$this->correo}");
+
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
@@ -49,6 +58,7 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        Log::info("Autenticación exitosa para: {$this->correo}");
         RateLimiter::clear($this->throttleKey());
     }
 

@@ -2,37 +2,29 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
-/**
- * @OA\Schema(
- *     schema="Usuario",
- *     title="Usuario",
- *     type="object",
- *     required={"nombre", "correo", "telefono", "contraseña"},
- *     @OA\Property(property="id", type="integer", example=1),
- *     @OA\Property(property="nombre", type="string", example="Juan Pérez"),
- *     @OA\Property(property="correo", type="string", format="email", example="juan@example.com"),
- *     @OA\Property(property="telefono", type="string", example="123456789"),
- *     @OA\Property(property="contraseña", type="string", example="********"),
- *     @OA\Property(property="avatar", type="string", example="avatar.jpg"),
- * )
- */
 class Usuario extends Authenticatable
 {
-    use Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
-    protected $table = 'usuario'; // Tabla personalizada
+    protected $guard_name = 'web';
+    protected $table = 'usuario';
     protected $fillable = ['nombre', 'correo', 'telefono', 'contraseña', 'avatar'];
-    public $timestamps = true; // Timestamps activados
+    protected $hidden = ['contraseña', 'remember_token'];
+    public $timestamps = true;
 
     /**
      * Sobrescribe la columna usada para autenticación (por defecto es 'email').
      */
     public function getAuthIdentifierName()
     {
-        return 'correo';
+        return 'id'; // Aseguramos que use la clave primaria como identificador
     }
 
     /**
@@ -43,7 +35,15 @@ class Usuario extends Authenticatable
         return $this->contraseña;
     }
 
-    // Relaciones (sin cambios)
+    /**
+     * Especifica la columna de email para restablecer la contraseña.
+     */
+    public function getEmailForPasswordReset()
+    {
+        return $this->correo;
+    }
+
+    // Relaciones
     public function contratos() { return $this->hasMany(Contrato::class, 'usuario_id'); }
     public function quejas() { return $this->hasMany(Queja::class, 'usuario_id'); }
     public function reportesProblema() { return $this->hasMany(ReporteProblema::class, 'usuario_id'); }
@@ -52,8 +52,58 @@ class Usuario extends Authenticatable
     public function estadosAlquiler() { return $this->hasMany(EstadoAlquiler::class, 'usuario_id'); }
     public function recordatoriosPago() { return $this->hasMany(RecordatorioPago::class, 'usuario_id'); }
 
-    public function roles()
+    // Sobrescribe los métodos del trait HasRoles para usar tus nombres de tablas personalizados
+    public function roles(): BelongsToMany
     {
-        return $this->belongsToMany(Rol::class, 'usuario_roles', 'usuario_id', 'rol_id');
+        return $this->belongsToMany(Rol::class, 'usuarios_roles', 'usuario_id', 'rol_id');
+    }
+
+    /**
+     * Esta relación no se usará ya que la tabla no existe,
+     * pero se mantiene como un método dummy para evitar errores en el código que la llama
+     */
+    public function permissions(): BelongsToMany
+    {
+        // Relación dummy que retornará siempre una colección vacía
+        return $this->belongsToMany(Permiso::class, 'usuarios_roles', 'usuario_id', 'rol_id')
+            ->whereRaw('1=0'); // Condición que siempre retorna falso
+    }
+
+    /**
+     * Método personalizado para verificar roles
+     */
+    public function hasRole($role)
+    {
+        if (is_string($role)) {
+            return $this->roles()->where('nombre', $role)->exists();
+        }
+
+        if (is_array($role)) {
+            return $this->roles()->whereIn('nombre', $role)->exists();
+        }
+
+        $roleCollection = collect($role);
+        return $this->roles()->whereIn('nombre', $roleCollection->pluck('nombre'))->exists();
+    }
+
+    /**
+     * Método personalizado para verificar permisos
+     */
+    public function hasPermissionTo($permission)
+    {
+        return $this->roles()->whereHas('permisos', function($query) use ($permission) {
+            $query->where('nombre', $permission);
+        })->exists();
+    }
+
+    /**
+     * Sobrescribe el método can para compatibilidad con nuestro sistema personalizado
+     */
+    public function can($abilities, $arguments = [])
+    {
+        if (is_string($abilities)) {
+            return $this->hasPermissionTo($abilities);
+        }
+        return parent::can($abilities, $arguments);
     }
 }

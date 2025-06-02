@@ -12,15 +12,26 @@ use Illuminate\Support\Facades\Storage;
 class EdificioController extends Controller
 {
     /**
+     * Constructor: añade middleware de permisos
+     */
+    public function __construct()
+    {
+        $this->middleware('permission:ver_edificio')->only(['index', 'show']);
+        $this->middleware('permission:crear_edificio')->only(['create', 'store']);
+        $this->middleware('permission:editar_edificio')->only(['edit', 'update']);
+        $this->middleware('permission:eliminar_edificio')->only(['destroy']);
+    }
+
+    /**
      * Mostrar todos los edificios.
      */
     public function index()
     {
         try {
             $edificios = Edificio::all();
-            return view('edificio.index', compact('edificios'));
+            return view('admin.edificio.index', compact('edificios'));
         } catch (Exception $e) {
-            return response()->json(['error' => 'Error al obtener los edificios', 'exception' => $e->getMessage()], 500);
+            return back()->with('error', 'Error al obtener los edificios: ' . $e->getMessage());
         }
     }
 
@@ -31,11 +42,11 @@ class EdificioController extends Controller
     {
         try {
             $edificio = Edificio::findOrFail($id);
-            return view('edificio.show', compact('edificio'));
+            return view('admin.edificio.show', compact('edificio'));
         } catch (ModelNotFoundException $e) {
-            return response()->json(['message' => 'Edificio no encontrado'], 404);
+            return redirect()->route('edificio.index')->with('error', 'Edificio no encontrado');
         } catch (Exception $e) {
-            return response()->json(['error' => 'Error al obtener el edificio', 'exception' => $e->getMessage()], 500);
+            return back()->with('error', 'Error al obtener el edificio: ' . $e->getMessage());
         }
     }
 
@@ -44,7 +55,7 @@ class EdificioController extends Controller
      */
     public function create()
     {
-        return view('edificio.create');
+        return view('admin.edificio.create');
     }
 
     /**
@@ -57,9 +68,9 @@ class EdificioController extends Controller
             $validatedData = $request->validate([
                 'nombre' => 'required|string|max:255|unique:edificio,nombre',
                 'direccion' => 'required|string|max:255',
-                'cantidad_pisos' => 'required|integer',
+                'cantidad_pisos' => 'required|integer|min:1',
                 'descripcion' => 'nullable|string',
-                'imagen' => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048', // Validación para la imagen
+                'imagen' => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048',
             ]);
 
             // Subir la imagen si está presente
@@ -75,7 +86,7 @@ class EdificioController extends Controller
         } catch (ValidationException $e) {
             return redirect()->back()->withErrors($e->errors())->withInput();
         } catch (Exception $e) {
-            return response()->json(['error' => 'Error al crear el edificio', 'exception' => $e->getMessage()], 500);
+            return back()->with('error', 'Error al crear el edificio: ' . $e->getMessage())->withInput();
         }
     }
 
@@ -86,11 +97,11 @@ class EdificioController extends Controller
     {
         try {
             $edificio = Edificio::findOrFail($id);
-            return view('edificio.edit', compact('edificio'));
+            return view('admin.edificio.edit', compact('edificio'));
         } catch (ModelNotFoundException $e) {
-            return response()->json(['message' => 'Edificio no encontrado'], 404);
+            return redirect()->route('edificio.index')->with('error', 'Edificio no encontrado');
         } catch (Exception $e) {
-            return response()->json(['error' => 'Error al obtener el edificio', 'exception' => $e->getMessage()], 500);
+            return back()->with('error', 'Error al obtener el edificio: ' . $e->getMessage());
         }
     }
 
@@ -106,7 +117,7 @@ class EdificioController extends Controller
             $validatedData = $request->validate([
                 'nombre' => 'required|string|max:255|unique:edificio,nombre,' . $id,
                 'direccion' => 'required|string|max:255',
-                'cantidad_pisos' => 'required|integer',
+                'cantidad_pisos' => 'required|integer|min:1',
                 'descripcion' => 'nullable|string',
                 'imagen' => 'nullable|image|mimes:jpg,jpeg,png,gif|max:2048',
             ]);
@@ -114,8 +125,8 @@ class EdificioController extends Controller
             // Subir la nueva imagen si está presente
             if ($request->hasFile('imagen')) {
                 // Eliminar la imagen anterior si existe
-                if ($edificio->imagen && Storage::exists('public/' . $edificio->imagen)) {
-                    Storage::delete('public/' . $edificio->imagen);
+                if ($edificio->imagen && Storage::disk('public')->exists($edificio->imagen)) {
+                    Storage::disk('public')->delete($edificio->imagen);
                 }
                 $imagenPath = $request->file('imagen')->store('edificios', 'public');
                 $validatedData['imagen'] = $imagenPath;
@@ -128,9 +139,9 @@ class EdificioController extends Controller
         } catch (ValidationException $e) {
             return redirect()->back()->withErrors($e->errors())->withInput();
         } catch (ModelNotFoundException $e) {
-            return response()->json(['message' => 'Edificio no encontrado'], 404);
+            return redirect()->route('edificio.index')->with('error', 'Edificio no encontrado');
         } catch (Exception $e) {
-            return response()->json(['error' => 'Error al actualizar el edificio', 'exception' => $e->getMessage()], 500);
+            return back()->with('error', 'Error al actualizar el edificio: ' . $e->getMessage())->withInput();
         }
     }
 
@@ -142,9 +153,14 @@ class EdificioController extends Controller
         try {
             $edificio = Edificio::findOrFail($id);
 
+            // Verificar si tiene apartamentos asociados
+            if ($edificio->apartamentos()->count() > 0) {
+                return redirect()->route('edificio.index')->with('error', 'No se puede eliminar el edificio porque tiene apartamentos asociados');
+            }
+
             // Eliminar la imagen si existe
-            if ($edificio->imagen && Storage::exists('public/' . $edificio->imagen)) {
-                Storage::delete('public/' . $edificio->imagen);
+            if ($edificio->imagen && Storage::disk('public')->exists($edificio->imagen)) {
+                Storage::disk('public')->delete($edificio->imagen);
             }
 
             // Eliminar el edificio
@@ -152,12 +168,9 @@ class EdificioController extends Controller
 
             return redirect()->route('edificio.index')->with('success', 'Edificio eliminado exitosamente');
         } catch (ModelNotFoundException $e) {
-            return response()->json(['message' => 'Edificio no encontrado'], 404);
+            return redirect()->route('edificio.index')->with('error', 'Edificio no encontrado');
         } catch (Exception $e) {
-            return response()->json(['error' => 'Error al eliminar el edificio', 'exception' => $e->getMessage()], 500);
+            return back()->with('error', 'Error al eliminar el edificio: ' . $e->getMessage());
         }
     }
 }
-
-
-
