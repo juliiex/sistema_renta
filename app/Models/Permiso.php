@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Permission\Contracts\Permission as PermissionContract;
 use Spatie\Permission\Exceptions\PermissionDoesNotExist;
 use Spatie\Permission\Guard;
@@ -30,7 +31,7 @@ use Spatie\Permission\Guard;
  */
 class Permiso extends Model implements PermissionContract
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $guard_name = 'web';
     protected $table = 'permiso';

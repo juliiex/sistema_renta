@@ -3,6 +3,13 @@
 @section('title', 'Dashboard Propietario')
 
 @section('dashboard-content')
+<!-- Botón para descargar informe -->
+<div class="mb-4 flex justify-end">
+    <a href="{{ route('informe.generar') }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition flex items-center">
+        <i class="fas fa-download mr-2"></i> Descargar Informe
+    </a>
+</div>
+
 <!-- Top Row: Métricas -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <!-- Total de Edificios -->
@@ -40,7 +47,7 @@
         <div class="flex items-start justify-between">
             <div>
                 <p class="text-gray-500 text-sm">Ingresos Mensuales Est.</p>
-                <h3 class="text-2xl font-bold mt-1">${{ number_format($apartamentosOcupados * 1000, 0) }}</h3>
+                <h3 class="text-2xl font-bold mt-1">${{ number_format($ingresosMensuales, 0) }}</h3>
                 <div class="mt-2 text-xs text-gray-500">Basado en apartamentos ocupados</div>
             </div>
             <div class="bg-emerald-100 p-2 rounded-md">
@@ -140,19 +147,17 @@
                 <table class="w-full text-sm text-left">
                     <thead class="text-xs text-gray-700 uppercase bg-gray-100">
                         <tr>
-                            <th class="px-4 py-2">Contrato ID</th>
-                            <th class="px-4 py-2">Estado</th>
+                            <th class="px-4 py-2">Apartamento</th>
+                            <th class="px-4 py-2">Inquilino</th>
                             <th class="px-4 py-2">Fecha</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($listas['pagosPendientes'] as $pago)
                             <tr class="border-b hover:bg-gray-50">
-                                <td class="px-4 py-2">{{ $pago->contrato_id }}</td>
-                                <td class="px-4 py-2">
-                                    <span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">Pendiente</span>
-                                </td>
-                                <td class="px-4 py-2">{{ date('d/m/Y', strtotime($pago->fecha_reporte)) }}</td>
+                                <td class="px-4 py-2">{{ $pago->contrato->apartamento->numero_apartamento }}</td>
+                                <td class="px-4 py-2">{{ $pago->contrato->usuario->nombre }}</td>
+                                <td class="px-4 py-2">{{ $pago->fecha_reporte->format('d/m/Y') }}</td>
                             </tr>
                         @endforeach
                     </tbody>
@@ -240,13 +245,21 @@
         var pagosEstadoChart = new Chart(pagosEstadoChartCtx, {
             type: 'pie',
             data: {
-                labels: Object.keys({{ Illuminate\Support\Js::from($graficos['pagosPorEstado']) }}),
+                labels: [
+                    'Pagado',
+                    'Pendiente',
+                    'Atrasado'
+                ],
                 datasets: [{
-                    data: Object.values({{ Illuminate\Support\Js::from($graficos['pagosPorEstado']) }}),
+                    data: [
+                        {{ $graficos['pagosPorEstado']['pagado'] ?? 0 }},
+                        {{ $graficos['pagosPorEstado']['pendiente'] ?? 0 }},
+                        {{ $graficos['pagosPorEstado']['atrasado'] ?? 0 }}
+                    ],
                     backgroundColor: [
-                        'rgba(34, 197, 94, 0.7)',  // pagado
-                        'rgba(234, 179, 8, 0.7)',  // pendiente
-                        'rgba(239, 68, 68, 0.7)',  // retrasado
+                        'rgba(34, 197, 94, 0.7)',  // pagado (verde)
+                        'rgba(234, 179, 8, 0.7)',  // pendiente (amarillo)
+                        'rgba(239, 68, 68, 0.7)',  // atrasado (rojo)
                     ],
                     borderWidth: 1
                 }]

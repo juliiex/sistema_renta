@@ -16,10 +16,10 @@ class ReporteProblemaController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_reporte_problema')->only(['index', 'show']);
+        $this->middleware('permission:ver_reporte_problema')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_reporte_problema')->only(['create', 'store']);
-        $this->middleware('permission:editar_reporte_problema')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_reporte_problema')->only(['destroy']);
+        $this->middleware('permission:editar_reporte_problema')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_reporte_problema')->only(['destroy', 'forceDelete']);
     }
 
     // Método para mostrar la lista de reportes (Index)
@@ -234,7 +234,7 @@ class ReporteProblemaController extends Controller
                          ->with('success', 'Reporte de problema actualizado correctamente.');
     }
 
-    // Método para eliminar un reporte (Destroy)
+    // Método para eliminar un reporte (Destroy) - soft delete
     public function destroy($id)
     {
         $reporte = ReporteProblema::findOrFail($id);
@@ -261,6 +261,95 @@ class ReporteProblemaController extends Controller
 
         return redirect()->route('reporte_problema.index')
                          ->with('success', 'Reporte de problema eliminado correctamente.');
+    }
+
+    /**
+     * Mostrar reportes de problemas eliminados (soft deleted)
+     */
+    public function trashed()
+    {
+        // Admin y propietario pueden ver todos los reportes eliminados
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            $reportes = ReporteProblema::onlyTrashed()
+                ->with('apartamento', 'usuario')
+                ->orderBy('deleted_at', 'desc')
+                ->get();
+        }
+        // Inquilino solo ve sus propios reportes eliminados
+        else {
+            $reportes = ReporteProblema::onlyTrashed()
+                ->with('apartamento', 'usuario')
+                ->where('usuario_id', auth()->id())
+                ->orderBy('deleted_at', 'desc')
+                ->get();
+        }
+
+        return view('admin.reporte_problema.trashed', compact('reportes'));
+    }
+
+    /**
+     * Restaurar un reporte de problema eliminado
+     */
+    public function restore($id)
+    {
+        $reporte = ReporteProblema::onlyTrashed()->findOrFail($id);
+
+        // Verificar permisos para restaurar
+        if (auth()->user()->hasRole('inquilino')) {
+            if ($reporte->usuario_id != auth()->id()) {
+                abort(403, 'No tiene permiso para restaurar este reporte.');
+            }
+
+            // Inquilino solo puede restaurar reportes pendientes
+            if ($reporte->estado != 'pendiente') {
+                return redirect()->route('reporte_problema.trashed')
+                    ->with('error', 'Solo puede restaurar reportes pendientes.');
+            }
+        }
+        // El propietario solo puede restaurar reportes pendientes
+        else if (auth()->user()->hasRole('propietario') && $reporte->estado != 'pendiente') {
+            return redirect()->route('reporte_problema.trashed')
+                ->with('error', 'Solo puede restaurar reportes pendientes.');
+        }
+
+        $reporte->restore();
+
+        return redirect()->route('reporte_problema.trashed')
+            ->with('success', 'Reporte de problema restaurado correctamente.');
+    }
+
+    /**
+     * Eliminar permanentemente un reporte de problema
+     */
+    public function forceDelete($id)
+    {
+        $reporte = ReporteProblema::onlyTrashed()->findOrFail($id);
+
+        // Solo admin puede eliminar permanentemente cualquier reporte
+        if (!auth()->user()->hasRole('admin')) {
+            // Propietario solo puede eliminar permanentemente reportes pendientes
+            if (auth()->user()->hasRole('propietario') && $reporte->estado != 'pendiente') {
+                return redirect()->route('reporte_problema.trashed')
+                    ->with('error', 'Solo puede eliminar permanentemente reportes pendientes.');
+            }
+
+            // Inquilino solo puede eliminar permanentemente sus propios reportes pendientes
+            if (auth()->user()->hasRole('inquilino')) {
+                if ($reporte->usuario_id != auth()->id()) {
+                    abort(403, 'No tiene permiso para eliminar permanentemente este reporte.');
+                }
+
+                if ($reporte->estado != 'pendiente') {
+                    return redirect()->route('reporte_problema.trashed')
+                        ->with('error', 'Solo puede eliminar permanentemente reportes pendientes.');
+                }
+            }
+        }
+
+        $reporte->forceDelete();
+
+        return redirect()->route('reporte_problema.trashed')
+            ->with('success', 'Reporte de problema eliminado permanentemente.');
     }
 
     // Método para cambiar rápidamente el estado de un reporte (acción adicional)

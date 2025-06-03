@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Permission\Contracts\Role as RoleContract;
 use Spatie\Permission\Traits\HasPermissions;
 use Spatie\Permission\Exceptions\RoleDoesNotExist;
@@ -12,7 +13,7 @@ use Spatie\Permission\Guard;
 
 class Rol extends Model implements RoleContract
 {
-    use HasFactory, HasPermissions;
+    use HasFactory, HasPermissions, SoftDeletes;
 
     protected $guard_name = 'web';
     protected $table = 'rol';

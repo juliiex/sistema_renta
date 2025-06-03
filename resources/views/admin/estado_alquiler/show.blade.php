@@ -10,7 +10,10 @@
     <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold">Detalles del Estado de Alquiler</h2>
-            <a href="{{ route('estado_alquiler.index') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver a la lista</a>
+            <div class="flex space-x-2">
+                <a href="{{ route('estado_alquiler.trashed') }}" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition">Ver Eliminados</a>
+                <a href="{{ route('estado_alquiler.index') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver a la lista</a>
+            </div>
         </div>
 
         @if (session('success'))

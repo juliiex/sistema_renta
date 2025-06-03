@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * @OA\Schema(
@@ -20,7 +21,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class SolicitudAlquiler extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'solicitud_alquiler';
     protected $fillable = ['usuario_id', 'apartamento_id', 'estado_solicitud'];

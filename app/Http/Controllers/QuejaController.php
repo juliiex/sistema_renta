@@ -14,10 +14,10 @@ class QuejaController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_queja')->only(['index', 'show']);
+        $this->middleware('permission:ver_queja')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_queja')->only(['create', 'store']);
-        $this->middleware('permission:editar_queja')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_queja')->only(['destroy']);
+        $this->middleware('permission:editar_queja')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_queja')->only(['destroy', 'forceDelete']);
     }
 
     // Mostrar todas las quejas
@@ -178,7 +178,7 @@ class QuejaController extends Controller
         return redirect()->route('queja.index')->with('success', 'Queja actualizada correctamente.');
     }
 
-    // Eliminar una queja
+    // Eliminar una queja (soft delete)
     public function destroy($id)
     {
         $queja = Queja::findOrFail($id);
@@ -192,5 +192,63 @@ class QuejaController extends Controller
         $queja->delete();
 
         return redirect()->route('queja.index')->with('success', 'Queja eliminada correctamente.');
+    }
+
+    /**
+     * Mostrar quejas eliminadas (soft deleted).
+     */
+    public function trashed()
+    {
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            // Admin y propietario pueden ver todas las quejas eliminadas
+            $quejas = Queja::onlyTrashed()->with('usuario')->orderBy('id', 'desc')->get();
+        } else {
+            // Otros usuarios solo pueden ver sus propias quejas eliminadas
+            $quejas = Queja::onlyTrashed()
+                ->with('usuario')
+                ->where('usuario_id', auth()->id())
+                ->orderBy('id', 'desc')
+                ->get();
+        }
+
+        return view('admin.queja.trashed', compact('quejas'));
+    }
+
+    /**
+     * Restaurar una queja eliminada.
+     */
+    public function restore($id)
+    {
+        $queja = Queja::onlyTrashed()->findOrFail($id);
+
+        // Solo el creador de la queja o un administrador pueden restaurar
+        if ($queja->usuario_id != auth()->id() && !auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('queja.trashed')
+                ->with('error', 'Solo puede restaurar sus propias quejas.');
+        }
+
+        $queja->restore();
+
+        return redirect()->route('queja.trashed')
+            ->with('success', 'Queja restaurada correctamente.');
+    }
+
+    /**
+     * Eliminar permanentemente una queja.
+     */
+    public function forceDelete($id)
+    {
+        $queja = Queja::onlyTrashed()->findOrFail($id);
+
+        // Solo el creador de la queja o un administrador pueden eliminar permanentemente
+        if ($queja->usuario_id != auth()->id() && !auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('queja.trashed')
+                ->with('error', 'Solo puede eliminar permanentemente sus propias quejas.');
+        }
+
+        $queja->forceDelete();
+
+        return redirect()->route('queja.trashed')
+            ->with('success', 'Queja eliminada permanentemente.');
     }
 }

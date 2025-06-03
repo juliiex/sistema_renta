@@ -14,10 +14,10 @@ class EstadoAlquilerController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_estado_alquiler')->only(['index', 'show']);
+        $this->middleware('permission:ver_estado_alquiler')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_estado_alquiler')->only(['create', 'store']);
-        $this->middleware('permission:editar_estado_alquiler')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_estado_alquiler')->only(['destroy']);
+        $this->middleware('permission:editar_estado_alquiler')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_estado_alquiler')->only(['destroy', 'forceDelete']);
     }
 
     /**
@@ -226,7 +226,7 @@ class EstadoAlquilerController extends Controller
     }
 
     /**
-     * Elimina un estado de alquiler.
+     * Elimina temporalmente un estado de alquiler (soft delete).
      */
     public function destroy($id)
     {
@@ -244,5 +244,68 @@ class EstadoAlquilerController extends Controller
 
         $estadoAlquiler->delete();
         return redirect()->route('estado_alquiler.index')->with('success', 'Estado de alquiler eliminado correctamente.');
+    }
+
+    /**
+     * Mostrar estados de alquiler eliminados (soft deleted).
+     */
+    public function trashed()
+    {
+        // Para admin y propietario: todos los estados eliminados
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            $estadosAlquiler = EstadoAlquiler::onlyTrashed()
+                                ->with('contrato', 'usuario')
+                                ->get();
+        }
+        // Para inquilinos: solo sus propios estados de alquiler eliminados
+        else {
+            $estadosAlquiler = EstadoAlquiler::onlyTrashed()
+                                ->with('contrato', 'usuario')
+                                ->whereHas('contrato', function($query) {
+                                    $query->where('usuario_id', auth()->id());
+                                })
+                                ->orWhere('usuario_id', auth()->id())
+                                ->get();
+        }
+
+        return view('admin.estado_alquiler.trashed', compact('estadosAlquiler'));
+    }
+
+    /**
+     * Restaurar un estado de alquiler eliminado.
+     */
+    public function restore($id)
+    {
+        $estadoAlquiler = EstadoAlquiler::onlyTrashed()->findOrFail($id);
+
+        // Solo admin o propietario pueden restaurar estados de alquiler
+        if (!auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('estado_alquiler.trashed')
+                ->with('error', 'No tiene permiso para restaurar este estado de alquiler.');
+        }
+
+        $estadoAlquiler->restore();
+
+        return redirect()->route('estado_alquiler.trashed')
+            ->with('success', 'Estado de alquiler restaurado correctamente.');
+    }
+
+    /**
+     * Eliminar permanentemente un estado de alquiler.
+     */
+    public function forceDelete($id)
+    {
+        $estadoAlquiler = EstadoAlquiler::onlyTrashed()->findOrFail($id);
+
+        // Solo admin o propietario pueden eliminar permanentemente estados de alquiler
+        if (!auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('estado_alquiler.trashed')
+                ->with('error', 'No tiene permiso para eliminar permanentemente este estado de alquiler.');
+        }
+
+        $estadoAlquiler->forceDelete();
+
+        return redirect()->route('estado_alquiler.trashed')
+            ->with('success', 'Estado de alquiler eliminado permanentemente.');
     }
 }

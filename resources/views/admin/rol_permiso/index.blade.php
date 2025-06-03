@@ -10,7 +10,7 @@
     <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold">Gestión de Permisos por Rol</h2>
-            <a href="{{ route('menu') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Menú</a>
+            <a href="{{ route('home') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Dashboard</a>
         </div>
 
         @if (session('success'))

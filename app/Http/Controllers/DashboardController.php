@@ -10,6 +10,7 @@ use App\Models\Apartamento;
 use App\Models\Contrato;
 use App\Models\SolicitudAlquiler;
 use App\Models\ReporteProblema;
+use App\Models\EstadoAlquiler;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
@@ -75,7 +76,7 @@ class DashboardController extends Controller
                     $query->where('nombre', 'inquilino');
                 })->count(),
                 'posible_inquilino' => Usuario::whereHas('roles', function($query) {
-                    $query->where('nombre', 'posible_inquilino');
+                    $query->where('nombre', 'posible inquilino');
                 })->count(),
             ],
             'porcentajeOcupacion' => $this->calcularPorcentajeOcupacion(),
@@ -87,20 +88,23 @@ class DashboardController extends Controller
      */
     private function obtenerMetricasPropietario($usuarioId)
     {
-        // En este caso, asumimos que todos los apartamentos pertenecen al propietario
-        // ya que según tu comentario, todos los apartamentos son suyos
-        $totalApts = Apartamento::count();
-        $aptsDisponibles = Apartamento::where('estado', 'Disponible')->count();
-        $aptsOcupados = Apartamento::where('estado', 'Ocupado')->count();
+        // Obtener apartamentos
+        $apartamentos = Apartamento::all();
+        $aptsDisponibles = $apartamentos->where('estado', 'Disponible')->count();
+        $aptsOcupados = $apartamentos->where('estado', 'Ocupado');
+
+        // Calcular ingresos mensuales sumando los precios reales de apartamentos ocupados
+        $ingresosMensuales = $aptsOcupados->sum('precio');
 
         // Contamos la cantidad de edificios únicos
         $totalEdificios = Edificio::count();
 
         return [
             'totalEdificios' => $totalEdificios,
-            'totalApartamentos' => $totalApts,
+            'totalApartamentos' => $apartamentos->count(),
             'apartamentosDisponibles' => $aptsDisponibles,
-            'apartamentosOcupados' => $aptsOcupados,
+            'apartamentosOcupados' => $aptsOcupados->count(),
+            'ingresosMensuales' => $ingresosMensuales,
             'porcentajeOcupacion' => $this->calcularPorcentajeOcupacion(), // Usamos el mismo que para admin
         ];
     }
@@ -147,7 +151,7 @@ class DashboardController extends Controller
      */
     private function obtenerGraficosPropietario($usuarioId)
     {
-        // Para el propietario, usamos todos los apartamentos ya que todos son suyos
+        // Datos para gráfico de distribución de apartamentos
         $estadosApartamentos = [
             'Disponible' => Apartamento::where('estado', 'Disponible')->count(),
             'Ocupado' => Apartamento::where('estado', 'Ocupado')->count(),
@@ -243,22 +247,23 @@ class DashboardController extends Controller
             return [
                 'pagado' => 0,
                 'pendiente' => 0,
-                'retrasado' => 0
+                'atrasado' => 0
             ];
         }
 
         // Contar estados de alquiler agrupados por estado_pago
+        // Normalizamos los estados a minúsculas
         $pagos = DB::table('estado_alquiler')
             ->whereIn('contrato_id', $contratosIds)
-            ->select('estado_pago', DB::raw('count(*) as total'))
-            ->groupBy('estado_pago')
+            ->select(DB::raw('LOWER(estado_pago) as estado_pago'), DB::raw('count(*) as total'))
+            ->groupBy(DB::raw('LOWER(estado_pago)'))
             ->pluck('total', 'estado_pago')
             ->toArray();
 
         // Asegurar que siempre tenemos las tres categorías, incluso si están en 0
         if (!isset($pagos['pagado'])) $pagos['pagado'] = 0;
         if (!isset($pagos['pendiente'])) $pagos['pendiente'] = 0;
-        if (!isset($pagos['retrasado'])) $pagos['retrasado'] = 0;
+        if (!isset($pagos['atrasado'])) $pagos['atrasado'] = 0;
 
         return $pagos;
     }
@@ -337,17 +342,17 @@ class DashboardController extends Controller
                 ->with(['apartamento', 'usuario'])
                 ->get(),
 
-            'pagosPendientes' => DB::table('estado_alquiler')
-                ->whereIn('contrato_id', $contratosIds)
+            'pagosPendientes' => EstadoAlquiler::whereIn('contrato_id', $contratosIds)
                 ->where('estado_pago', 'pendiente')
                 ->orderBy('fecha_reporte', 'desc')
                 ->limit(5)
+                ->with(['contrato.apartamento', 'contrato.usuario'])
                 ->get(),
 
             'solicitudesRecientes' => SolicitudAlquiler::whereIn('apartamento_id', $apartamentosIds)
                 ->orderBy('fecha_solicitud', 'desc')
                 ->limit(5)
-                ->with(['usuario'])
+                ->with(['usuario', 'apartamento'])
                 ->get(),
         ];
     }

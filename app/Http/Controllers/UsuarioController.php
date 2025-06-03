@@ -14,10 +14,10 @@ class UsuarioController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_usuario')->only(['index', 'show']);
+        $this->middleware('permission:ver_usuario')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_usuario')->only(['create', 'store']);
-        $this->middleware('permission:editar_usuario')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_usuario')->only(['destroy']);
+        $this->middleware('permission:editar_usuario')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_usuario')->only(['destroy', 'forceDelete']);
     }
 
     /**
@@ -32,7 +32,7 @@ class UsuarioController extends Controller
         // Propietario ve inquilinos y posibles inquilinos
         elseif (auth()->user()->hasRole('propietario')) {
             $usuarios = Usuario::whereHas('roles', function($query) {
-                $query->whereIn('nombre', ['inquilino', 'posible_inquilino']);
+                $query->whereIn('nombre', ['inquilino', 'posible inquilino']);
             })->get();
         }
         // El resto solo se ve a sí mismo
@@ -54,7 +54,7 @@ class UsuarioController extends Controller
             $roles = Rol::all();
         } elseif (auth()->user()->hasRole('propietario')) {
             // Propietario solo puede crear inquilinos o posibles inquilinos
-            $roles = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])->get();
+            $roles = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])->get();
         } else {
             // Otros usuarios no deberían poder crear usuarios, pero por si acaso
             $roles = collect();
@@ -83,7 +83,7 @@ class UsuarioController extends Controller
         if (!auth()->user()->hasRole('admin')) {
             // Para propietario, verificar que solo asigne roles permitidos
             if (auth()->user()->hasRole('propietario')) {
-                $rolesPermitidos = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])
+                $rolesPermitidos = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])
                     ->pluck('id')
                     ->toArray();
 
@@ -162,7 +162,7 @@ class UsuarioController extends Controller
             $roles = Rol::all();
         } elseif (auth()->user()->hasRole('propietario')) {
             // Propietario solo puede asignar inquilino o posible inquilino
-            $roles = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])->get();
+            $roles = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])->get();
         } else {
             // Usuarios normales no pueden cambiar roles
             $roles = collect();
@@ -212,7 +212,7 @@ class UsuarioController extends Controller
             // Verificar que el usuario tenga permiso para asignar los roles seleccionados
             if (!auth()->user()->hasRole('admin')) {
                 // Para propietario, verificar que solo asigne roles permitidos
-                $rolesPermitidos = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])
+                $rolesPermitidos = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])
                     ->pluck('id')
                     ->toArray();
 
@@ -268,7 +268,7 @@ class UsuarioController extends Controller
     }
 
     /**
-     * Eliminar un usuario.
+     * Eliminar un usuario (soft delete).
      */
     public function destroy($id)
     {
@@ -303,15 +303,118 @@ class UsuarioController extends Controller
             }
         }
 
+        // Eliminar el usuario (soft delete)
+        $usuario->delete();
+
+        // Redirigir a la lista de usuarios con mensaje de éxito
+        return redirect()->route('usuarios.index')->with('success', 'Usuario eliminado correctamente');
+    }
+
+    /**
+     * Mostrar la lista de usuarios eliminados.
+     */
+    public function trashed()
+    {
+        // Admin ve todos los usuarios eliminados
+        if (auth()->user()->hasRole('admin')) {
+            $usuarios = Usuario::onlyTrashed()->get();
+        }
+        // Propietario ve inquilinos y posibles inquilinos eliminados
+        elseif (auth()->user()->hasRole('propietario')) {
+            $usuarios = Usuario::onlyTrashed()
+                ->whereHas('roles', function($query) {
+                    $query->whereIn('nombre', ['inquilino', 'posible inquilino']);
+                })
+                ->get();
+        }
+        // El resto solo ve a sí mismos si están eliminados (esto no debería ocurrir normalmente)
+        else {
+            $usuarios = Usuario::onlyTrashed()
+                ->where('id', auth()->id())
+                ->get();
+        }
+
+        return view('admin.usuarios.trashed', compact('usuarios'));
+    }
+
+    /**
+     * Restaurar un usuario eliminado.
+     */
+    public function restore($id)
+    {
+        $usuario = Usuario::onlyTrashed()->findOrFail($id);
+
+        // Verificar permisos especiales para restaurar
+        if (!auth()->user()->hasRole('admin')) {
+            if (auth()->user()->hasRole('propietario')) {
+                // Propietario no puede restaurar admin u otros propietarios
+                if ($usuario->hasRole(['admin', 'propietario'])) {
+                    return redirect()->route('usuarios.trashed')
+                        ->with('error', 'No tiene permiso para restaurar este tipo de usuario.');
+                }
+            } else {
+                // Usuarios normales solo pueden restaurarse a sí mismos
+                if (auth()->id() != $id) {
+                    return redirect()->route('usuarios.trashed')
+                        ->with('error', 'No tiene permiso para restaurar a otro usuario.');
+                }
+            }
+        }
+
+        // Restaurar el usuario
+        $usuario->restore();
+
+        return redirect()->route('usuarios.trashed')
+            ->with('success', 'Usuario restaurado correctamente');
+    }
+
+    /**
+     * Eliminar permanentemente un usuario.
+     */
+    public function forceDelete($id)
+    {
+        $usuario = Usuario::onlyTrashed()->findOrFail($id);
+
+        // Verificar permisos especiales para eliminar permanentemente
+        if (!auth()->user()->hasRole('admin')) {
+            if (auth()->user()->hasRole('propietario')) {
+                // Propietario no puede eliminar permanentemente admin u otros propietarios
+                if ($usuario->hasRole(['admin', 'propietario'])) {
+                    return redirect()->route('usuarios.trashed')
+                        ->with('error', 'No tiene permiso para eliminar permanentemente este tipo de usuario.');
+                }
+            } else {
+                // Usuarios normales solo pueden eliminarse permanentemente a sí mismos
+                if (auth()->id() != $id) {
+                    return redirect()->route('usuarios.trashed')
+                        ->with('error', 'No tiene permiso para eliminar permanentemente a otro usuario.');
+                }
+            }
+        }
+
+        // No permitir eliminar permanentemente el último administrador del sistema
+        if ($usuario->hasRole('admin')) {
+            $adminCount = Usuario::withTrashed()
+                ->whereHas('roles', function($query) {
+                    $query->where('nombre', 'admin');
+                })
+                ->count();
+
+            if ($adminCount <= 1) {
+                return redirect()->route('usuarios.trashed')
+                    ->with('error', 'No se puede eliminar permanentemente el último administrador del sistema.');
+            }
+        }
+
         // Eliminar el avatar si existe
         if ($usuario->avatar && file_exists(storage_path('app/public/' . $usuario->avatar))) {
             unlink(storage_path('app/public/' . $usuario->avatar));
         }
 
-        // Eliminar el usuario
-        $usuario->delete();
+        // Eliminar el usuario permanentemente
+        $usuario->forceDelete();
 
-        // Redirigir a la lista de usuarios con mensaje de éxito
-        return redirect()->route('usuarios.index')->with('success', 'Usuario eliminado correctamente');
+        return redirect()->route('usuarios.trashed')
+            ->with('success', 'Usuario eliminado permanentemente');
     }
 }

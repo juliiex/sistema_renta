@@ -16,10 +16,10 @@ class EdificioController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_edificio')->only(['index', 'show']);
+        $this->middleware('permission:ver_edificio')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_edificio')->only(['create', 'store']);
-        $this->middleware('permission:editar_edificio')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_edificio')->only(['destroy']);
+        $this->middleware('permission:editar_edificio')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_edificio')->only(['destroy', 'forceDelete']);
     }
 
     /**
@@ -146,7 +146,7 @@ class EdificioController extends Controller
     }
 
     /**
-     * Eliminar un edificio.
+     * Eliminar temporalmente un edificio (soft delete).
      */
     public function destroy($id)
     {
@@ -158,12 +158,7 @@ class EdificioController extends Controller
                 return redirect()->route('edificio.index')->with('error', 'No se puede eliminar el edificio porque tiene apartamentos asociados');
             }
 
-            // Eliminar la imagen si existe
-            if ($edificio->imagen && Storage::disk('public')->exists($edificio->imagen)) {
-                Storage::disk('public')->delete($edificio->imagen);
-            }
-
-            // Eliminar el edificio
+            // Eliminar temporalmente el edificio (soft delete)
             $edificio->delete();
 
             return redirect()->route('edificio.index')->with('success', 'Edificio eliminado exitosamente');
@@ -171,6 +166,64 @@ class EdificioController extends Controller
             return redirect()->route('edificio.index')->with('error', 'Edificio no encontrado');
         } catch (Exception $e) {
             return back()->with('error', 'Error al eliminar el edificio: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Mostrar edificios eliminados (soft deleted).
+     */
+    public function trashed()
+    {
+        try {
+            $edificios = Edificio::onlyTrashed()->get();
+            return view('admin.edificio.trashed', compact('edificios'));
+        } catch (Exception $e) {
+            return back()->with('error', 'Error al obtener los edificios eliminados: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Restaurar un edificio eliminado.
+     */
+    public function restore($id)
+    {
+        try {
+            $edificio = Edificio::onlyTrashed()->findOrFail($id);
+            $edificio->restore();
+
+            return redirect()->route('edificio.trashed')->with('success', 'Edificio restaurado exitosamente');
+        } catch (ModelNotFoundException $e) {
+            return redirect()->route('edificio.trashed')->with('error', 'Edificio no encontrado');
+        } catch (Exception $e) {
+            return back()->with('error', 'Error al restaurar el edificio: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Eliminar permanentemente un edificio.
+     */
+    public function forceDelete($id)
+    {
+        try {
+            $edificio = Edificio::onlyTrashed()->findOrFail($id);
+
+            // Verificar si tiene apartamentos asociados
+            if ($edificio->apartamentos()->count() > 0) {
+                return redirect()->route('edificio.trashed')->with('error', 'No se puede eliminar permanentemente el edificio porque tiene apartamentos asociados');
+            }
+
+            // Eliminar la imagen si existe
+            if ($edificio->imagen && Storage::disk('public')->exists($edificio->imagen)) {
+                Storage::disk('public')->delete($edificio->imagen);
+            }
+
+            $edificio->forceDelete();
+
+            return redirect()->route('edificio.trashed')->with('success', 'Edificio eliminado permanentemente');
+        } catch (ModelNotFoundException $e) {
+            return redirect()->route('edificio.trashed')->with('error', 'Edificio no encontrado');
+        } catch (Exception $e) {
+            return back()->with('error', 'Error al eliminar permanentemente el edificio: ' . $e->getMessage());
         }
     }
 }

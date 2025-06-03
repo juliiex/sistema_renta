@@ -15,10 +15,10 @@ class RecordatorioPagoController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_recordatorio_pago')->only(['index', 'show']);
+        $this->middleware('permission:ver_recordatorio_pago')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_recordatorio_pago')->only(['create', 'store']);
-        $this->middleware('permission:editar_recordatorio_pago')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_recordatorio_pago')->only(['destroy']);
+        $this->middleware('permission:editar_recordatorio_pago')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_recordatorio_pago')->only(['destroy', 'forceDelete']);
 
         // Restringir a roles admin y propietario
         $this->middleware('role:admin|propietario')->except(['index', 'show']);
@@ -176,13 +176,66 @@ class RecordatorioPagoController extends Controller
         return redirect()->route('recordatorio_pago.index')->with('success', 'Recordatorio de pago actualizado con éxito.');
     }
 
-    // Elimina un recordatorio de pago
+    // Elimina un recordatorio de pago (soft delete)
     public function destroy($id)
     {
         $recordatorio = RecordatorioPago::findOrFail($id);
         $recordatorio->delete();
 
         return redirect()->route('recordatorio_pago.index')->with('success', 'Recordatorio de pago eliminado con éxito.');
+    }
+
+    /**
+     * Mostrar recordatorios de pago eliminados (soft deleted).
+     */
+    public function trashed()
+    {
+        // Admin y propietario pueden ver todos los recordatorios eliminados
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            $recordatorios = RecordatorioPago::onlyTrashed()->with('usuario')->orderBy('fecha_envio', 'desc')->get();
+        }
+        // Otros usuarios solo ven sus propios recordatorios eliminados
+        else {
+            $recordatorios = RecordatorioPago::onlyTrashed()
+                ->with('usuario')
+                ->where('usuario_id', auth()->id())
+                ->orderBy('fecha_envio', 'desc')
+                ->get();
+        }
+
+        return view('admin.recordatorio_pago.trashed', compact('recordatorios'));
+    }
+
+    /**
+     * Restaurar un recordatorio de pago eliminado.
+     */
+    public function restore($id)
+    {
+        // Solo admin y propietario pueden restaurar recordatorios
+        if (!auth()->user()->hasRole(['admin', 'propietario'])) {
+            abort(403, 'No tiene permiso para restaurar recordatorios de pago.');
+        }
+
+        $recordatorio = RecordatorioPago::onlyTrashed()->findOrFail($id);
+        $recordatorio->restore();
+
+        return redirect()->route('recordatorio_pago.trashed')->with('success', 'Recordatorio de pago restaurado con éxito.');
+    }
+
+    /**
+     * Eliminar permanentemente un recordatorio de pago.
+     */
+    public function forceDelete($id)
+    {
+        // Solo admin y propietario pueden eliminar permanentemente recordatorios
+        if (!auth()->user()->hasRole(['admin', 'propietario'])) {
+            abort(403, 'No tiene permiso para eliminar permanentemente recordatorios de pago.');
+        }
+
+        $recordatorio = RecordatorioPago::onlyTrashed()->findOrFail($id);
+        $recordatorio->forceDelete();
+
+        return redirect()->route('recordatorio_pago.trashed')->with('success', 'Recordatorio de pago eliminado permanentemente.');
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Models\Edificio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use PDF;
 
 class ContratoController extends Controller
 {
@@ -123,5 +124,20 @@ class ContratoController extends Controller
 
         return view('propietario.contratos.por-apartamento',
             compact('apartamento', 'contratoActivo', 'contratosAnteriores', 'tieneContratoActivo', 'tieneContratosAnteriores'));
+    }
+
+    public function descargarContrato($id)
+    {
+        $contrato = Contrato::with(['usuario', 'apartamento.edificio'])
+                    ->findOrFail($id);
+
+        $pdf = PDF::loadView('propietario.contratos.pdf', compact('contrato'));
+
+        // Nombre del archivo: Contrato_NumeroContrato_Apellido_Fecha.pdf
+        $nombreArchivo = 'Contrato_' . $contrato->id . '_' .
+                          str_replace(' ', '_', $contrato->usuario->nombre) . '_' .
+                          $contrato->fecha_inicio->format('dmY') . '.pdf';
+
+        return $pdf->stream($nombreArchivo);
     }
 }

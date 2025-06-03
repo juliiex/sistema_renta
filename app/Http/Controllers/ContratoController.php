@@ -17,10 +17,10 @@ class ContratoController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_contrato')->only(['index', 'show']);
+        $this->middleware('permission:ver_contrato')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_contrato')->only(['create', 'store']);
-        $this->middleware('permission:editar_contrato')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_contrato')->only(['destroy']);
+        $this->middleware('permission:editar_contrato')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_contrato')->only(['destroy', 'forceDelete']);
     }
 
     /**
@@ -111,6 +111,50 @@ class ContratoController extends Controller
     }
 
     /**
+     * Actualiza el rol del usuario según corresponda sin crear registros duplicados
+     */
+    private function actualizarRolUsuario($usuarioId, $rolDestino)
+    {
+        // Verificar que tanto el usuarioId como el rolDestino no sean null
+        if (!$usuarioId || !$rolDestino) {
+            \Log::error("Error al actualizar rol: ID de usuario o rol es null", [
+                'usuario_id' => $usuarioId,
+                'rol_id' => $rolDestino
+            ]);
+            return;
+        }
+
+        // Primero verificamos si el usuario ya tiene el rol que queremos asignarle
+        $yaExisteRolDestino = DB::table('usuarios_roles')
+            ->where('usuario_id', $usuarioId)
+            ->where('rol_id', $rolDestino)
+            ->exists();
+
+        if ($yaExisteRolDestino) {
+            // Si ya tiene el rol destino, no hacemos nada
+            return;
+        }
+
+        // Verificamos si el usuario tiene algún rol en la tabla usuarios_roles
+        $tieneRol = DB::table('usuarios_roles')
+            ->where('usuario_id', $usuarioId)
+            ->exists();
+
+        if ($tieneRol) {
+            // Si tiene algún rol, lo actualizamos al nuevo rol
+            DB::table('usuarios_roles')
+                ->where('usuario_id', $usuarioId)
+                ->update(['rol_id' => $rolDestino]);
+        } else {
+            // Si no tiene ningún rol, creamos un nuevo registro
+            DB::table('usuarios_roles')->insert([
+                'usuario_id' => $usuarioId,
+                'rol_id' => $rolDestino
+            ]);
+        }
+    }
+
+    /**
      * Almacena un nuevo contrato en la base de datos.
      */
     public function store(Request $request)
@@ -172,17 +216,12 @@ class ContratoController extends Controller
             $apartamento->update(['estado' => 'ocupado']);
         }
 
-        // Asignar rol de inquilino al usuario si no lo tiene
-        $rolInquilino = Rol::where('nombre', 'inquilino')->first();
+        // Obtener los IDs de los roles
+        $rolInquilinoId = Rol::where('nombre', 'inquilino')->pluck('id')->first();
 
-        if ($rolInquilino && !$usuario->hasRole('inquilino')) {
-            $usuario->roles()->attach($rolInquilino->id);
-
-            // Eliminar rol de posible_inquilino si lo tiene
-            $rolPosibleInquilino = Rol::where('nombre', 'posible_inquilino')->first();
-            if ($rolPosibleInquilino && $usuario->hasRole('posible_inquilino')) {
-                $usuario->roles()->detach($rolPosibleInquilino->id);
-            }
+        if ($rolInquilinoId) {
+            // Actualizar el rol del usuario a inquilino
+            $this->actualizarRolUsuario($request->usuario_id, $rolInquilinoId);
         }
 
         return redirect()->route('contrato.index')->with('success', 'Contrato creado exitosamente. El usuario ha sido asignado como inquilino.');
@@ -222,7 +261,28 @@ class ContratoController extends Controller
             abort(403, 'No tiene permiso para editar este contrato.');
         }
 
-        // Resto del código para obtener usuarios y apartamentos...
+        // Obtener IDs de usuarios que son admin o propietario (para excluirlos)
+        $rolAdminId = Rol::where('nombre', 'admin')->pluck('id')->first();
+        $rolPropietarioId = Rol::where('nombre', 'propietario')->pluck('id')->first();
+
+        // Obtener IDs de usuarios con roles de admin o propietario
+        $usuariosExcluir = DB::table('usuarios_roles')
+            ->whereIn('rol_id', [$rolAdminId, $rolPropietarioId])
+            ->pluck('usuario_id')
+            ->toArray();
+
+        // Traer usuarios que NO estén en la lista de exclusión
+        $usuarios = Usuario::whereNotIn('id', $usuariosExcluir)
+            ->orderBy('id', 'asc')
+            ->get();
+
+        // Si no hay usuarios elegibles, mostrar todos
+        if ($usuarios->isEmpty()) {
+            $usuarios = Usuario::orderBy('id', 'asc')->get();
+        }
+
+        // Obtener todos los apartamentos para la edición
+        $apartamentos = Apartamento::orderBy('numero_apartamento', 'asc')->get();
 
         return view('admin.contrato.edit', compact('contrato', 'usuarios', 'apartamentos'));
     }
@@ -249,8 +309,51 @@ class ContratoController extends Controller
             'fecha_fin' => 'required|date',
         ]);
 
-        // Verificaciones del cambio de usuario, apartamentos, etc...
-        // (Mantenemos código existente)
+        // Si cambia el apartamento, verificar disponibilidad
+        if ($contrato->apartamento_id != $request->apartamento_id) {
+            $contratosActivos = Contrato::where('apartamento_id', $request->apartamento_id)
+                ->where('estado', 'activo')
+                ->count();
+
+            if ($contratosActivos > 0) {
+                return redirect()->back()->with('error', 'Este apartamento ya está asignado a otro contrato activo.');
+            }
+
+            // Liberar el apartamento anterior
+            $apartamentoAnterior = Apartamento::find($contrato->apartamento_id);
+            if ($apartamentoAnterior) {
+                $apartamentoAnterior->update(['estado' => 'disponible']);
+            }
+
+            // Ocupar el nuevo apartamento
+            $apartamentoNuevo = Apartamento::find($request->apartamento_id);
+            if ($apartamentoNuevo) {
+                $apartamentoNuevo->update(['estado' => 'ocupado']);
+            }
+        }
+
+        // Si cambia el usuario, actualizar roles
+        if ($contrato->usuario_id != $request->usuario_id) {
+            // Verificar si el usuario anterior tiene otros contratos activos
+            $contratosActivosUsuarioAnterior = Contrato::where('usuario_id', $contrato->usuario_id)
+                ->where('id', '!=', $id)
+                ->where('estado', 'activo')
+                ->count();
+
+            if ($contratosActivosUsuarioAnterior == 0) {
+                // Cambiar rol de inquilino a posible_inquilino para el usuario anterior
+                $rolPosibleInquilinoId = Rol::where('nombre', 'posible inquilino')->pluck('id')->first();
+                if ($rolPosibleInquilinoId) {
+                    $this->actualizarRolUsuario($contrato->usuario_id, $rolPosibleInquilinoId);
+                }
+            }
+
+            // Actualizar el rol del nuevo usuario a inquilino
+            $rolInquilinoId = Rol::where('nombre', 'inquilino')->pluck('id')->first();
+            if ($rolInquilinoId) {
+                $this->actualizarRolUsuario($request->usuario_id, $rolInquilinoId);
+            }
+        }
 
         // Actualizar datos básicos del contrato
         $contrato->usuario_id = $request->usuario_id;
@@ -304,24 +407,103 @@ class ContratoController extends Controller
             }
         }
 
-        // Verificar si el usuario tiene otros contratos activos
-        $usuario = Usuario::find($contrato->usuario_id);
-        $contratosActivos = Contrato::where('usuario_id', $contrato->usuario_id)
-            ->where('id', '!=', $id)
-            ->where('estado', 'activo')
-            ->count();
+        // Eliminar el contrato (soft delete)
+        $contrato->delete();
+
+        return redirect()->route('contrato.index')->with('success', 'Contrato eliminado correctamente.');
+    }
+
+    /**
+     * Mostrar contratos eliminados (soft deleted).
+     */
+    public function trashed()
+    {
+        // Para admin y propietario: todos los contratos eliminados
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            $contratos = Contrato::onlyTrashed()->with('usuario', 'apartamento')->get();
+        }
+        // Para inquilinos: solo sus propios contratos eliminados
+        else {
+            $contratos = Contrato::onlyTrashed()->with('usuario', 'apartamento')
+                ->where('usuario_id', auth()->id())
+                ->get();
+        }
+
+        return view('admin.contrato.trashed', compact('contratos'));
+    }
+
+    /**
+     * Restaurar un contrato eliminado.
+     */
+    public function restore($id)
+    {
+        $contrato = Contrato::onlyTrashed()->findOrFail($id);
+
+        // Verificar si se puede restaurar (verificar que el apartamento esté disponible)
+        $apartamento = Apartamento::find($contrato->apartamento_id);
+        if ($apartamento && ($apartamento->estado === 'Ocupado' || $apartamento->estado === 'ocupado')) {
+            return redirect()->route('contrato.trashed')
+                ->with('error', 'No se puede restaurar este contrato porque el apartamento ya está ocupado.');
+        }
+
+        $contrato->restore();
+
+        // Actualizar el estado del apartamento a ocupado
+        if ($apartamento) {
+            if ($apartamento->estado === 'Disponible') {
+                $apartamento->update(['estado' => 'Ocupado']);
+            } else {
+                $apartamento->update(['estado' => 'ocupado']);
+            }
+        }
+
+        // Obtener los IDs de los roles
+        $rolInquilinoId = Rol::where('nombre', 'inquilino')->pluck('id')->first();
+
+        // Actualizar el rol del usuario a inquilino si se encontró el rol
+        if ($rolInquilinoId) {
+            $this->actualizarRolUsuario($contrato->usuario_id, $rolInquilinoId);
+        }
+
+        return redirect()->route('contrato.trashed')
+            ->with('success', 'Contrato restaurado correctamente.');
+    }
+
+    /**
+     * Eliminar permanentemente un contrato.
+     */
+    public function forceDelete($id)
+    {
+        $contrato = Contrato::onlyTrashed()->findOrFail($id);
 
         // Eliminar la imagen de firma si existe
         if ($contrato->firma_imagen && Storage::disk('public')->exists($contrato->firma_imagen)) {
             Storage::disk('public')->delete($contrato->firma_imagen);
         }
 
-        // Eliminar el contrato
-        $contrato->delete();
+        // Antes de eliminar, verificar si el usuario tiene otros contratos activos
+        $otrosContratos = Contrato::where('usuario_id', $contrato->usuario_id)
+            ->where('id', '!=', $id)
+            ->where('estado', 'activo')
+            ->count();
 
-        // Si el usuario no tiene más contratos activos, cambiar su rol a posible_inquilino
-        // (Mantenemos código existente)
+        // Guardar el ID del usuario antes de eliminar el contrato
+        $usuarioId = $contrato->usuario_id;
 
-        return redirect()->route('contrato.index')->with('success', 'Contrato eliminado correctamente.');
+        $contrato->forceDelete();
+
+        // Si no tiene más contratos activos, actualizar su rol a posible_inquilino
+        if ($otrosContratos == 0) {
+            // Obtener el ID del rol posible_inquilino
+            $rolPosibleInquilinoId = Rol::where('nombre', 'posible inquilino')->pluck('id')->first();
+
+            // Actualizar el rol del usuario a posible_inquilino solo si encontramos el rol
+            if ($rolPosibleInquilinoId) {
+                $this->actualizarRolUsuario($usuarioId, $rolPosibleInquilinoId);
+            }
+        }
+
+        return redirect()->route('contrato.trashed')
+            ->with('success', 'Contrato eliminado permanentemente.');
     }
 }

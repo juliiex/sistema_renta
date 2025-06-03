@@ -14,10 +14,10 @@ class EvaluacionController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_evaluacion')->only(['index', 'show']);
+        $this->middleware('permission:ver_evaluacion')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_evaluacion')->only(['create', 'store']);
-        $this->middleware('permission:editar_evaluacion')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_evaluacion')->only(['destroy']);
+        $this->middleware('permission:editar_evaluacion')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_evaluacion')->only(['destroy', 'forceDelete']);
     }
 
     public function index()
@@ -162,5 +162,62 @@ class EvaluacionController extends Controller
 
         return redirect()->route('evaluaciones.index')->with('success', 'Evaluación eliminada exitosamente.');
     }
-}
 
+    /**
+     * Mostrar evaluaciones eliminadas (soft deleted).
+     */
+    public function trashed()
+    {
+        // Todas las evaluaciones eliminadas son visibles para admin y propietario
+        if (auth()->user()->hasRole(['admin', 'propietario'])) {
+            $evaluaciones = Evaluacion::onlyTrashed()->with('usuario', 'apartamento')->get();
+        }
+        // Para otros usuarios, solo sus propias evaluaciones eliminadas
+        else {
+            $evaluaciones = Evaluacion::onlyTrashed()
+                            ->with('usuario', 'apartamento')
+                            ->where('usuario_id', auth()->id())
+                            ->get();
+        }
+
+        return view('admin.evaluaciones.trashed', compact('evaluaciones'));
+    }
+
+    /**
+     * Restaurar una evaluación eliminada.
+     */
+    public function restore($id)
+    {
+        $evaluacion = Evaluacion::onlyTrashed()->findOrFail($id);
+
+        // Solo el creador de la evaluación o un administrador pueden restaurar
+        if ($evaluacion->usuario_id != auth()->id() && !auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('evaluaciones.trashed')
+                ->with('error', 'Solo puede restaurar sus propias evaluaciones');
+        }
+
+        $evaluacion->restore();
+
+        return redirect()->route('evaluaciones.trashed')
+            ->with('success', 'Evaluación restaurada exitosamente.');
+    }
+
+    /**
+     * Eliminar permanentemente una evaluación.
+     */
+    public function forceDelete($id)
+    {
+        $evaluacion = Evaluacion::onlyTrashed()->findOrFail($id);
+
+        // Solo el creador de la evaluación o un administrador pueden eliminar permanentemente
+        if ($evaluacion->usuario_id != auth()->id() && !auth()->user()->hasRole(['admin', 'propietario'])) {
+            return redirect()->route('evaluaciones.trashed')
+                ->with('error', 'Solo puede eliminar permanentemente sus propias evaluaciones');
+        }
+
+        $evaluacion->forceDelete();
+
+        return redirect()->route('evaluaciones.trashed')
+            ->with('success', 'Evaluación eliminada permanentemente.');
+    }
+}

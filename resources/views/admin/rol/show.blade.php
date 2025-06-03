@@ -10,7 +10,10 @@
     <div class="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold">Detalles del Rol</h2>
-            <a href="{{ route('rol.index') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver a la lista</a>
+            <div class="flex space-x-2">
+                <a href="{{ route('rol.trashed') }}" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition">Ver Eliminados</a>
+                <a href="{{ route('rol.index') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver a la lista</a>
+            </div>
         </div>
 
         @if (session('success'))
@@ -37,7 +40,10 @@
                     <div class="mb-3">
                         <strong class="block text-sm font-medium text-gray-700">Nombre:</strong>
                         <p>{{ $rol->nombre }}
-                        @if(in_array($rol->nombre, ['admin', 'propietario', 'inquilino', 'posible_inquilino']))
+                        @php
+                            $esRolSistema = in_array(strtolower($rol->nombre), ['admin', 'propietario', 'inquilino', 'posible inquilino']);
+                        @endphp
+                        @if($esRolSistema)
                             <span class="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">Rol del Sistema</span>
                         @endif
                         </p>
@@ -60,14 +66,14 @@
 
                     <div class="mb-3">
                         <strong class="block text-sm font-medium text-gray-700">Tipo de rol:</strong>
-                        <p>{{ in_array($rol->nombre, ['admin', 'propietario', 'inquilino', 'posible_inquilino']) ? 'Rol del Sistema (No modificable)' : 'Rol Personalizado' }}</p>
+                        <p>{{ $esRolSistema ? 'Rol del Sistema (No modificable)' : 'Rol Personalizado' }}</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="flex space-x-4 mt-6">
-            @if(!in_array($rol->nombre, ['admin', 'propietario', 'inquilino', 'posible_inquilino']))
+            @if(!$esRolSistema)
                 <a href="{{ route('rol.edit', $rol->id) }}"
                     class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded transition">
                     Editar

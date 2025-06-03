@@ -1,6 +1,8 @@
-@extends('layouts.app')
+@extends('layouts.dashboard-sidebar')
 
-@section('content')
+@section('title', 'Contratos por Apartamento')
+
+@section('dashboard-content')
 <div class="container mx-auto px-4 py-8">
     <div class="flex flex-wrap items-center gap-3 mb-6">
         <a href="{{ route('propietario.contratos.index') }}" class="inline-flex items-center text-blue-600 hover:underline">

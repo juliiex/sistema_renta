@@ -10,7 +10,10 @@
     <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold">Lista de Quejas</h2>
-            <a href="{{ route('menu') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Menú</a>
+            <div class="flex space-x-2">
+                <a href="{{ route('queja.trashed') }}" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition">Ver Eliminadas</a>
+                <a href="{{ route('home') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Dashboard</a>
+            </div>
         </div>
 
         @if (session('success'))

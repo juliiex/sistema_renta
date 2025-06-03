@@ -20,6 +20,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\InformeController;
 
 // Controladores de usuario - IMPORTANTE: Importaciones correctas
 use App\Http\Controllers\Usuario\UsuarioApartamentoController;
@@ -43,11 +44,20 @@ use App\Http\Controllers\Propietario\QuejaController as PropietarioQuejaControll
 
 /*
 |--------------------------------------------------------------------------
-| Ruta principal que ahora usa el HomeController
+| Ruta para la landing page (usuarios no autenticados)
 |--------------------------------------------------------------------------
 */
 
-Route::get('/', [HomeController::class, 'index'])
+// Ruta para la landing page
+Route::get('/', [App\Http\Controllers\LandingController::class, 'index'])->name('landing');
+
+/*
+|--------------------------------------------------------------------------
+| Ruta principal que ahora usa el HomeController (usuarios autenticados)
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/home', [HomeController::class, 'index'])
     ->middleware('auth')
     ->name('home');
 
@@ -116,7 +126,7 @@ Route::middleware(['auth'])->group(function () {
 Route::middleware(['auth', 'role:admin|propietario'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 });
-
+Route::get('/informe/generar', [InformeController::class, 'generarInforme'])->name('informe.generar');
 /*
 |--------------------------------------------------------------------------
 | Rutas para el Administrador
@@ -124,24 +134,77 @@ Route::middleware(['auth', 'role:admin|propietario'])->group(function () {
 */
 
 Route::middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('usuarios/trashed', [UsuarioController::class, 'trashed'])->name('usuarios.trashed');
+    Route::patch('usuarios/{id}/restore', [UsuarioController::class, 'restore'])->name('usuarios.restore');
+    Route::delete('usuarios/{id}/force-delete', [UsuarioController::class, 'forceDelete'])->name('usuarios.force-delete');
     Route::resource('usuarios', UsuarioController::class);
+
+
+    Route::get('rol/trashed', [RolController::class, 'trashed'])->name('rol.trashed');
+    Route::patch('rol/{id}/restore', [RolController::class, 'restore'])->name('rol.restore');
+    Route::delete('rol/{id}/force-delete', [RolController::class, 'forceDelete'])->name('rol.force-delete');
     Route::resource('rol', RolController::class);
+
+
     Route::resource('permiso', PermisoController::class);
     Route::resource('rol_permiso', RolPermisoController::class);
+
+
+    Route::get('usuario_rol/trashed', [UsuarioRolController::class, 'trashed'])->name('usuario_rol.trashed');
+    Route::patch('usuario_rol/{id}/restore', [UsuarioRolController::class, 'restore'])->name('usuario_rol.restore');
+    Route::delete('usuario_rol/{id}/force-delete', [UsuarioRolController::class, 'forceDelete'])->name('usuario_rol.force-delete');
     Route::resource('usuario_rol', UsuarioRolController::class);
 
     // CRUD para administradores
+    Route::get('apartamento/trashed', [ApartamentoController::class, 'trashed'])->name('apartamento.trashed');
+    Route::patch('apartamento/{id}/restore', [ApartamentoController::class, 'restore'])->name('apartamento.restore');
+    Route::delete('apartamento/{id}/force-delete', [ApartamentoController::class, 'forceDelete'])->name('apartamento.force-delete');
     Route::resource('apartamento', ApartamentoController::class);
+
+
+    Route::get('edificio/trashed', [EdificioController::class, 'trashed'])->name('edificio.trashed');
+    Route::patch('edificio/{id}/restore', [EdificioController::class, 'restore'])->name('edificio.restore');
+    Route::delete('edificio/{id}/force-delete', [EdificioController::class, 'forceDelete'])->name('edificio.force-delete');
     Route::resource('edificio', EdificioController::class);
+
+    Route::get('evaluaciones/trashed', [EvaluacionController::class, 'trashed'])->name('evaluaciones.trashed');
+    Route::patch('evaluaciones/{id}/restore', [EvaluacionController::class, 'restore'])->name('evaluaciones.restore');
+    Route::delete('evaluaciones/{id}/force-delete', [EvaluacionController::class, 'forceDelete'])->name('evaluaciones.force-delete');
     Route::resource('evaluaciones', EvaluacionController::class);
+
+
+    // PRIMERO: Rutas específicas para soft delete
+    Route::get('contrato/trashed', [ContratoController::class, 'trashed'])->name('contrato.trashed');
+    Route::patch('contrato/{id}/restore', [ContratoController::class, 'restore'])->name('contrato.restore');
+    Route::delete('contrato/{id}/force-delete', [ContratoController::class, 'forceDelete'])->name('contrato.force-delete');
     Route::resource('contrato', ContratoController::class);
+
+    Route::get('estado_alquiler/trashed', [EstadoAlquilerController::class, 'trashed'])->name('estado_alquiler.trashed');
+    Route::patch('estado_alquiler/{id}/restore', [EstadoAlquilerController::class, 'restore'])->name('estado_alquiler.restore');
+    Route::delete('estado_alquiler/{id}/force-delete', [EstadoAlquilerController::class, 'forceDelete'])->name('estado_alquiler.force-delete');
     Route::resource('estado_alquiler', EstadoAlquilerController::class);
+
+    Route::get('recordatorio_pago/trashed', [RecordatorioPagoController::class, 'trashed'])->name('recordatorio_pago.trashed');
+    Route::patch('recordatorio_pago/{id}/restore', [RecordatorioPagoController::class, 'restore'])->name('recordatorio_pago.restore');
+    Route::delete('recordatorio_pago/{id}/force-delete', [RecordatorioPagoController::class, 'forceDelete'])->name('recordatorio_pago.force-delete');
     Route::resource('recordatorio_pago', RecordatorioPagoController::class);
 
     Route::get('/asignar-multiples-roles', [UsuarioRolController::class, 'asignarMultiplesRoles'])
         ->name('usuario_rol.asignarMultiplesRoles');
     Route::post('/guardar-multiples-roles', [UsuarioRolController::class, 'guardarMultiplesRoles'])
         ->name('usuario_rol.guardarMultiplesRoles');
+
+    Route::get('queja/trashed', [QuejaController::class, 'trashed'])->name('queja.trashed');
+    Route::patch('queja/{id}/restore', [QuejaController::class, 'restore'])->name('queja.restore');
+    Route::delete('queja/{id}/force-delete', [QuejaController::class, 'forceDelete'])->name('queja.force-delete');
+    Route::resource('queja', QuejaController::class);
+
+    Route::get('reporte_problema/trashed', [ReporteProblemaController::class, 'trashed'])->name('reporte_problema.trashed');
+    Route::patch('reporte_problema/{id}/restore', [ReporteProblemaController::class, 'restore'])->name('reporte_problema.restore');
+    Route::delete('reporte_problema/{id}/force-delete', [ReporteProblemaController::class, 'forceDelete'])->name('reporte_problema.force-delete');
+    Route::resource('reporte_problema', ReporteProblemaController::class);
+
+    Route::resource('solicitudes', SolicitudAlquilerController::class);
 
     Route::get('/get-apartamentos/{usuario_id}', [EvaluacionController::class, 'getApartamentosByUsuario']);
 });
@@ -194,6 +257,9 @@ Route::middleware(['auth', 'role:propietario'])->prefix('propietario')->name('pr
     Route::get('/contratos/{id}', [PropietarioContratoController::class, 'show'])->name('contratos.show');
     Route::get('/apartamentos/{id}/contratos', [PropietarioContratoController::class, 'porApartamento'])->name('contratos.por-apartamento');
 
+    // NUEVA RUTA para descargar contratos para propietarios
+    Route::get('/contratos/descargar/{id}', [PropietarioContratoController::class, 'descargarContrato'])->name('contratos.descargar');
+
     // Rutas para recordatorios de pago
     Route::get('/recordatorios', [PropietarioRecordatorioController::class, 'index'])->name('recordatorios.index');
     Route::get('/recordatorios/usuario/{id}', [PropietarioRecordatorioController::class, 'porUsuario'])->name('recordatorios.por-usuario');
@@ -213,6 +279,10 @@ Route::middleware(['auth', 'role:propietario'])->prefix('propietario')->name('pr
     Route::get('/quejas', [PropietarioQuejaController::class, 'index'])->name('quejas.index');
     Route::get('/quejas/{id}', [PropietarioQuejaController::class, 'show'])->name('quejas.show');
     Route::delete('/quejas/{id}', [PropietarioQuejaController::class, 'destroy'])->name('quejas.destroy');
+
+    Route::get('/firma', [FirmaContratoController::class, 'index'])->name('firma.index');
+    Route::get('/firma/{id}', [FirmaContratoController::class, 'show'])->name('firma.firmar');
+    Route::post('/firma/{id}', [FirmaContratoController::class, 'store'])->name('firma.guardar');
 });
 
 /*
@@ -222,10 +292,6 @@ Route::middleware(['auth', 'role:propietario'])->prefix('propietario')->name('pr
 */
 
 Route::middleware(['auth'])->group(function () {
-    Route::resource('queja', QuejaController::class); // Este es el controlador general para admin
-    Route::resource('reporte_problema', ReporteProblemaController::class);
-    Route::resource('solicitudes', SolicitudAlquilerController::class);
-
     Route::get('/apartamentos', [ApartamentoController::class, 'indexPublic'])->name('apartamentos.public');
     Route::get('/apartamento/{id}', [ApartamentoController::class, 'showPublic'])->name('apartamentos.public.show');
 });
@@ -240,6 +306,11 @@ Route::middleware(['auth'])->prefix('usuario')->name('usuario.')->group(function
     /*
      * Rutas para TODOS los usuarios (inquilinos y posibles inquilinos)
      */
+
+    // NUEVA RUTA para descargar contratos para inquilinos
+    Route::get('/contratos/descargar/{id}', [UsuarioContratoController::class, 'descargarContrato'])
+        ->middleware('role:inquilino')
+        ->name('contratos.descargar');
 
     // Apartamentos
     Route::get('/explorar', [UsuarioApartamentoController::class, 'index'])
@@ -284,7 +355,6 @@ Route::middleware(['auth'])->prefix('usuario')->name('usuario.')->group(function
      * Rutas SOLO para inquilinos (protegidas con middleware)
      */
     Route::middleware(['role:inquilino'])->group(function () {
-
         Route::get('/mi-apartamento/{contrato_id}', [MiApartamentoController::class, 'show'])
         ->name('mi-apartamento.detalle');
         Route::post('/mi-apartamento/{contrato_id}/evaluar', [MiApartamentoController::class, 'evaluarApartamento'])

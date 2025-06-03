@@ -3,6 +3,13 @@
 @section('title', 'Dashboard Administrador')
 
 @section('dashboard-content')
+<!-- Botón para descargar informe -->
+<div class="mb-4 flex justify-end">
+    <a href="{{ route('informe.generar') }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition flex items-center">
+        <i class="fas fa-download mr-2"></i> Descargar Informe
+    </a>
+</div>
+
 <!-- Top Row: Métricas -->
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <!-- Total de Edificios -->

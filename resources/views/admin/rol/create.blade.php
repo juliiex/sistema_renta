@@ -27,7 +27,7 @@
             <div class="flex">
                 <div class="ml-3">
                     <p class="text-sm text-blue-700">
-                        <strong>Nota:</strong> Los roles del sistema (admin, propietario, inquilino, posible_inquilino) ya existen y no pueden ser modificados.
+                        <strong>Nota:</strong> Los roles del sistema (admin, propietario, inquilino, posible inquilino) ya existen y no pueden ser modificados.
                     </p>
                 </div>
             </div>

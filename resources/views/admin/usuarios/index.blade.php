@@ -18,8 +18,10 @@
                     Mi Perfil
                 @endif
             </h2>
-
-            <a href="{{ route('home') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Menú</a>
+            <div class="flex space-x-2">
+                <a href="{{ route('usuarios.trashed') }}" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition">Ver Eliminados</a>
+                <a href="{{ route('home') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Dashboard</a>
+            </div>
         </div>
 
         @if (session('success'))

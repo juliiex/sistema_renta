@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * @OA\Schema(
@@ -22,7 +23,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class ReporteProblema extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'reporte_problema';
     protected $fillable = ['apartamento_id', 'usuario_id', 'descripcion', 'tipo', 'estado'];

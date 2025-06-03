@@ -15,10 +15,10 @@ class ApartamentoController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('permission:ver_apartamento')->only(['index', 'show']);
+        $this->middleware('permission:ver_apartamento')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_apartamento')->only(['create', 'store']);
-        $this->middleware('permission:editar_apartamento')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_apartamento')->only(['destroy']);
+        $this->middleware('permission:editar_apartamento')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_apartamento')->only(['destroy', 'forceDelete']);
     }
 
     /**
@@ -156,14 +156,48 @@ class ApartamentoController extends Controller
     public function destroy($id)
     {
         $apartamento = Apartamento::findOrFail($id);
+        $apartamento->delete();
+
+        return redirect()->route('apartamento.index')->with('success', 'Apartamento eliminado correctamente.');
+    }
+
+    /**
+     * Mostrar apartamentos eliminados (soft deleted).
+     */
+    public function trashed()
+    {
+        $apartamentos = Apartamento::onlyTrashed()->with('edificio')->get();
+
+        // Corregido para asegurar que se está referenciando correctamente la vista
+        return view('admin.apartamento.trashed', compact('apartamentos'));
+    }
+
+    /**
+     * Restaurar un apartamento eliminado.
+     */
+    public function restore($id)
+    {
+        $apartamento = Apartamento::onlyTrashed()->findOrFail($id);
+        $apartamento->restore();
+
+        return redirect()->route('apartamento.trashed')
+            ->with('success', 'Apartamento restaurado correctamente.');
+    }
+
+    /**
+     * Eliminar permanentemente un apartamento.
+     */
+    public function forceDelete($id)
+    {
+        $apartamento = Apartamento::onlyTrashed()->findOrFail($id);
 
         // Eliminar imagen si existe
         if ($apartamento->imagen && Storage::disk('public')->exists($apartamento->imagen)) {
             Storage::disk('public')->delete($apartamento->imagen);
         }
 
-        $apartamento->delete();
-
-        return redirect()->route('apartamento.index')->with('success', 'Apartamento eliminado correctamente.');
+        $apartamento->forceDelete();
+        return redirect()->route('apartamento.trashed')
+            ->with('success', 'Apartamento eliminado permanentemente.');
     }
 }

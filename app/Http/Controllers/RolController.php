@@ -15,10 +15,10 @@ class RolController extends Controller
         // Solo admin debería poder gestionar roles del sistema
         $this->middleware('role:admin');
 
-        $this->middleware('permission:ver_rol')->only(['index', 'show']);
+        $this->middleware('permission:ver_rol')->only(['index', 'show', 'trashed']);
         $this->middleware('permission:crear_rol')->only(['create', 'store']);
-        $this->middleware('permission:editar_rol')->only(['edit', 'update']);
-        $this->middleware('permission:eliminar_rol')->only(['destroy']);
+        $this->middleware('permission:editar_rol')->only(['edit', 'update', 'restore']);
+        $this->middleware('permission:eliminar_rol')->only(['destroy', 'forceDelete']);
     }
 
     // Mostrar listado de roles en una vista
@@ -94,7 +94,7 @@ class RolController extends Controller
         return redirect()->route('rol.index')->with('success', 'Rol actualizado correctamente');
     }
 
-    // Eliminar un rol
+    // Eliminar un rol (soft delete)
     public function destroy(Rol $rol)
     {
         // No permitir eliminar roles del sistema
@@ -119,8 +119,54 @@ class RolController extends Controller
     private function esRolDelSistema($nombreRol)
     {
         // Lista de roles básicos del sistema que no deben ser modificados
-        $rolesDelSistema = ['admin', 'propietario', 'inquilino', 'posible_inquilino'];
+        $rolesDelSistema = ['admin', 'propietario', 'inquilino', 'posible inquilino'];
 
-        return in_array($nombreRol, $rolesDelSistema);
+        // Normaliza el nombre del rol para la comparación (en minúsculas)
+        return in_array(strtolower($nombreRol), array_map('strtolower', $rolesDelSistema));
+    }
+
+    /**
+     * Mostrar roles eliminados (soft deleted).
+     */
+    public function trashed()
+    {
+        $roles = Rol::onlyTrashed()->orderBy('id', 'asc')->get();
+        return view('admin.rol.trashed', compact('roles'));
+    }
+
+    /**
+     * Restaurar un rol eliminado.
+     */
+    public function restore($id)
+    {
+        $rol = Rol::onlyTrashed()->findOrFail($id);
+
+        $rol->restore();
+
+        return redirect()->route('rol.trashed')->with('success', 'Rol restaurado correctamente');
+    }
+
+    /**
+     * Eliminar permanentemente un rol.
+     */
+    public function forceDelete($id)
+    {
+        $rol = Rol::onlyTrashed()->findOrFail($id);
+
+        // No permitir eliminar roles del sistema
+        if ($this->esRolDelSistema($rol->nombre)) {
+            return redirect()->route('rol.trashed')
+                ->with('error', 'Los roles del sistema no pueden ser eliminados permanentemente.');
+        }
+
+        // Verificar si el rol tiene usuarios asignados
+        if ($rol->usuarios()->count() > 0) {
+            return redirect()->route('rol.trashed')
+                ->with('error', 'No se puede eliminar permanentemente el rol porque tiene usuarios asignados.');
+        }
+
+        $rol->forceDelete();
+
+        return redirect()->route('rol.trashed')->with('success', 'Rol eliminado permanentemente');
     }
 }

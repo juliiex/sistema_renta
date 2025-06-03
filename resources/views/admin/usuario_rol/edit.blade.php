@@ -60,7 +60,7 @@
                     @foreach ($roles as $rol)
                         <option value="{{ $rol->id }}" {{ $usuarioRol->rol_id == $rol->id ? 'selected' : '' }}>
                             {{ $rol->nombre }}
-                            @if(in_array($rol->nombre, ['admin', 'propietario', 'inquilino', 'posible_inquilino']))
+                            @if(in_array($rol->nombre, ['admin', 'propietario', 'inquilino', 'posible inquilino']))
                                 (Sistema)
                             @endif
                         </option>

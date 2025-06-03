@@ -1,6 +1,8 @@
-@extends('layouts.app')
+@extends('layouts.dashboard-sidebar')
 
-@section('content')
+@section('title', 'Detalle de Queja')
+
+@section('dashboard-content')
 <div class="container mx-auto px-4 py-8">
     <div class="flex items-center mb-6">
         <a href="{{ route('propietario.quejas.index') }}" class="flex items-center text-blue-600 hover:underline mr-4">

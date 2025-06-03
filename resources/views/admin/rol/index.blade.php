@@ -10,7 +10,10 @@
     <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold">Gestión de Roles</h2>
-            <a href="{{ route('menu') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Menú</a>
+            <div class="flex space-x-2">
+                <a href="{{ route('rol.trashed') }}" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition">Ver Eliminados</a>
+                <a href="{{ route('home') }}" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition">Volver al Dashboard</a>
+            </div>
         </div>
 
         @if (session('success'))
@@ -43,7 +46,10 @@
                         <td class="px-4 py-2">{{ $rol->id }}</td>
                         <td class="px-4 py-2">
                             {{ $rol->nombre }}
-                            @if(in_array($rol->nombre, ['admin', 'propietario', 'inquilino', 'posible_inquilino']))
+                            @php
+                                $esRolSistema = in_array(strtolower($rol->nombre), ['admin', 'propietario', 'inquilino', 'posible inquilino']);
+                            @endphp
+                            @if($esRolSistema)
                                 <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">Sistema</span>
                             @endif
                         </td>
@@ -52,7 +58,7 @@
                             <div class="flex justify-center space-x-2">
                                 <a href="{{ route('rol.show', $rol->id) }}" class="text-blue-500 hover:underline">Ver</a>
 
-                                @if(!in_array($rol->nombre, ['admin', 'propietario', 'inquilino', 'posible_inquilino']))
+                                @if(!$esRolSistema)
                                     <a href="{{ route('rol.edit', $rol->id) }}" class="text-yellow-500 hover:underline">Editar</a>
                                     <form action="{{ route('rol.destroy', $rol->id) }}" method="POST" class="inline" onsubmit="return confirm('¿Está seguro que desea eliminar este rol?');">
                                         @csrf

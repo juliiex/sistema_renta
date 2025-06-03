@@ -31,7 +31,7 @@ class UsuarioRolController extends Controller
         else {
             $usuarioRoles = UsuarioRol::with('usuario', 'rol')
                 ->whereHas('usuario.roles', function($query) {
-                    $query->whereIn('nombre', ['inquilino', 'posible_inquilino']);
+                    $query->whereIn('nombre', ['inquilino', 'posible inquilino']);
                 })
                 ->get();
         }
@@ -50,10 +50,10 @@ class UsuarioRolController extends Controller
         // y solo a usuarios que ya tengan esos roles
         else {
             $usuarios = Usuario::whereHas('roles', function($query) {
-                $query->whereIn('nombre', ['inquilino', 'posible_inquilino']);
+                $query->whereIn('nombre', ['inquilino', 'posible inquilino']);
             })->get();
 
-            $roles = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])->get();
+            $roles = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])->get();
         }
 
         return view('admin.usuario_rol.create', compact('usuarios', 'roles'));
@@ -81,7 +81,7 @@ class UsuarioRolController extends Controller
             $rol = Rol::find($request->rol_id);
             $usuario = Usuario::find($request->usuario_id);
 
-            if (!in_array($rol->nombre, ['inquilino', 'posible_inquilino'])) {
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino'])) {
                 return redirect()->route('usuario_rol.create')
                     ->with('error', 'No tiene permiso para asignar este rol.');
             }
@@ -106,7 +106,7 @@ class UsuarioRolController extends Controller
             $rol = $usuarioRol->rol;
             $usuario = $usuarioRol->usuario;
 
-            if (!in_array($rol->nombre, ['inquilino', 'posible_inquilino']) ||
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino']) ||
                 $usuario->hasRole(['admin', 'propietario'])) {
                 abort(403, 'No tiene permiso para ver esta relación usuario-rol.');
             }
@@ -124,7 +124,7 @@ class UsuarioRolController extends Controller
             $rol = $usuarioRol->rol;
             $usuario = $usuarioRol->usuario;
 
-            if (!in_array($rol->nombre, ['inquilino', 'posible_inquilino']) ||
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino']) ||
                 $usuario->hasRole(['admin', 'propietario'])) {
                 abort(403, 'No tiene permiso para editar esta relación usuario-rol.');
             }
@@ -138,10 +138,10 @@ class UsuarioRolController extends Controller
         // Propietario con restricciones
         else {
             $usuarios = Usuario::whereHas('roles', function($query) {
-                $query->whereIn('nombre', ['inquilino', 'posible_inquilino']);
+                $query->whereIn('nombre', ['inquilino', 'posible inquilino']);
             })->get();
 
-            $roles = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])->get();
+            $roles = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])->get();
         }
 
         return view('admin.usuario_rol.edit', compact('usuarioRol', 'usuarios', 'roles'));
@@ -156,7 +156,7 @@ class UsuarioRolController extends Controller
             $rol = $usuarioRol->rol;
             $usuario = $usuarioRol->usuario;
 
-            if (!in_array($rol->nombre, ['inquilino', 'posible_inquilino']) ||
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino']) ||
                 $usuario->hasRole(['admin', 'propietario'])) {
                 abort(403, 'No tiene permiso para actualizar esta relación usuario-rol.');
             }
@@ -183,7 +183,7 @@ class UsuarioRolController extends Controller
             $rol = Rol::find($request->rol_id);
             $usuario = Usuario::find($request->usuario_id);
 
-            if (!in_array($rol->nombre, ['inquilino', 'posible_inquilino'])) {
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino'])) {
                 return redirect()->route('usuario_rol.edit', $id)
                     ->with('error', 'No tiene permiso para asignar este rol.');
             }
@@ -208,7 +208,7 @@ class UsuarioRolController extends Controller
             $rol = $usuarioRol->rol;
             $usuario = $usuarioRol->usuario;
 
-            if (!in_array($rol->nombre, ['inquilino', 'posible_inquilino']) ||
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino']) ||
                 $usuario->hasRole(['admin', 'propietario'])) {
                 abort(403, 'No tiene permiso para eliminar esta relación usuario-rol.');
             }
@@ -233,6 +233,103 @@ class UsuarioRolController extends Controller
     }
 
     /**
+     * Mostrar relaciones usuario-rol eliminadas (soft deleted)
+     */
+    public function trashed()
+    {
+        // Admin ve todas las relaciones eliminadas
+        if (auth()->user()->hasRole('admin')) {
+            $usuarioRoles = UsuarioRol::onlyTrashed()->with('usuario', 'rol')->get();
+        }
+        // Propietario solo ve relaciones eliminadas de inquilinos y posibles inquilinos
+        else {
+            $usuarioRoles = UsuarioRol::onlyTrashed()
+                ->with('usuario', 'rol')
+                ->whereHas('usuario.roles', function($query) {
+                    $query->whereIn('nombre', ['inquilino', 'posible inquilino']);
+                })
+                ->get();
+        }
+
+        return view('admin.usuario_rol.trashed', compact('usuarioRoles'));
+    }
+
+    /**
+     * Restaurar una relación usuario-rol eliminada
+     */
+    public function restore($id)
+    {
+        $usuarioRol = UsuarioRol::onlyTrashed()->findOrFail($id);
+
+        // Si es propietario, verificar que solo restaura relaciones permitidas
+        if (!auth()->user()->hasRole('admin')) {
+            $rol = $usuarioRol->rol;
+            $usuario = $usuarioRol->usuario;
+
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino']) ||
+                $usuario->hasRole(['admin', 'propietario'])) {
+                return redirect()->route('usuario_rol.trashed')
+                    ->with('error', 'No tiene permiso para restaurar esta relación usuario-rol.');
+            }
+        }
+
+        // Verificar que la relación no exista ya
+        $existente = UsuarioRol::where('usuario_id', $usuarioRol->usuario_id)
+            ->where('rol_id', $usuarioRol->rol_id)
+            ->first();
+
+        if ($existente) {
+            return redirect()->route('usuario_rol.trashed')
+                ->with('error', 'Esta relación usuario-rol ya existe actualmente.');
+        }
+
+        $usuarioRol->restore();
+
+        return redirect()->route('usuario_rol.trashed')
+            ->with('success', 'Relación usuario-rol restaurada correctamente.');
+    }
+
+    /**
+     * Eliminar permanentemente una relación usuario-rol
+     */
+    public function forceDelete($id)
+    {
+        $usuarioRol = UsuarioRol::onlyTrashed()->findOrFail($id);
+
+        // Si es propietario, verificar que solo elimina permanentemente relaciones permitidas
+        if (!auth()->user()->hasRole('admin')) {
+            $rol = $usuarioRol->rol;
+            $usuario = $usuarioRol->usuario;
+
+            if (!in_array($rol->nombre, ['inquilino', 'posible inquilino']) ||
+                $usuario->hasRole(['admin', 'propietario'])) {
+                return redirect()->route('usuario_rol.trashed')
+                    ->with('error', 'No tiene permiso para eliminar permanentemente esta relación usuario-rol.');
+            }
+        }
+
+        // No permitir eliminar permanentemente la última relación de rol de admin del sistema
+        if ($usuarioRol->rol->nombre == 'admin') {
+            // Contar cuántos usuarios tienen el rol admin (incluyendo los soft-deleted)
+            $adminCount = UsuarioRol::withTrashed()
+                ->whereHas('rol', function($query) {
+                    $query->where('nombre', 'admin');
+                })
+                ->count();
+
+            if ($adminCount <= 1) {
+                return redirect()->route('usuario_rol.trashed')
+                    ->with('error', 'No se puede eliminar permanentemente el último rol de administrador del sistema.');
+            }
+        }
+
+        $usuarioRol->forceDelete();
+
+        return redirect()->route('usuario_rol.trashed')
+            ->with('success', 'Relación usuario-rol eliminada permanentemente.');
+    }
+
+    /**
      * Método para asignar múltiples roles a un usuario
      */
     public function asignarMultiplesRoles()
@@ -245,10 +342,10 @@ class UsuarioRolController extends Controller
         // Propietario con restricciones
         else {
             $usuarios = Usuario::whereHas('roles', function($query) {
-                $query->whereIn('nombre', ['inquilino', 'posible_inquilino']);
+                $query->whereIn('nombre', ['inquilino', 'posible inquilino']);
             })->get();
 
-            $roles = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])->get();
+            $roles = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])->get();
         }
 
         return view('admin.usuario_rol.asignar_multiples', compact('usuarios', 'roles'));
@@ -277,7 +374,7 @@ class UsuarioRolController extends Controller
             }
 
             // Verificar que todos los roles seleccionados son permitidos
-            $rolesPermitidos = Rol::whereIn('nombre', ['inquilino', 'posible_inquilino'])
+            $rolesPermitidos = Rol::whereIn('nombre', ['inquilino', 'posible inquilino'])
                 ->pluck('id')
                 ->toArray();
 
